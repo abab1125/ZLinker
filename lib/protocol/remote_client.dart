@@ -22,22 +22,48 @@ class RemoteClient {
   final void Function(String line)? onLog;
 
   late final RelayClient relay;
-  final _pendingMatchers =
-      <String, bool Function(Map<String, dynamic>)>{};
-  final _pendingCompleters =
-      <String, Completer<Map<String, dynamic>>>{};
+  final _pendingMatchers = <String, bool Function(Map<String, dynamic>)>{};
+  final _pendingCompleters = <String, Completer<Map<String, dynamic>>>{};
 
   StreamSubscription? _payloadSub;
 
-  final _workspaceListUpdatedController =
-      StreamController<dynamic>.broadcast();
+  final _workspaceListUpdatedController = StreamController<dynamic>.broadcast();
   Stream<dynamic> get workspaceListUpdated =>
       _workspaceListUpdatedController.stream;
+
+  /// `app-error` payloads (relay-level request failures carrying a reason
+  /// from the `Og` enum). Surface to the session layer for failure-state
+  /// mapping; also fails the matching pending request fast instead of
+  /// letting it ride to its timeout.
+  final _appErrorController = StreamController<RemoteAppError>.broadcast();
+  Stream<RemoteAppError> get appErrors => _appErrorController.stream;
 
   RemoteClient(this.params, {this.onLog}) {
     relay = RelayClient(params, onLog: onLog);
     _payloadSub = relay.payloads.listen(_dispatchPayload);
     relay.stateListenable.addListener(_onRelayState);
+  }
+
+  /// `app-error {requestId?, bridgeSessionId?, reason, error?}` — reason
+  /// enum mirrors the relay close codes plus the bootstrap-timeout /
+  /// recovery-timeout / unsupported-action family. Fails the pending
+  /// request (if the error answers one) and republishes on [appErrors].
+  void _handleAppError(Map<String, dynamic> payload) {
+    final error = RemoteAppError(
+      '${payload['reason'] ?? 'unexpected-error'}',
+      payload['error'] is String ? payload['error'] as String : null,
+    );
+    _log('[relay] app-error: ${error.reason} ${error.message ?? ''}');
+    final requestId = payload['requestId'] as String?;
+    if (requestId != null) {
+      final completer = _pendingCompleters[requestId];
+      if (completer != null && !completer.isCompleted) {
+        _pendingMatchers.remove(requestId);
+        _pendingCompleters.remove(requestId);
+        completer.completeError(error);
+      }
+    }
+    if (!_appErrorController.isClosed) _appErrorController.add(error);
   }
 
   void _log(String line) => onLog?.call(line);
@@ -107,8 +133,9 @@ class RemoteClient {
     session.degraded.value = 'recovering';
     // 1) cheap path: workspace-reconnect-request
     try {
-      final res = await reconnectWorkspace(workspaceKey)
-          .timeout(const Duration(seconds: 15));
+      final res = await reconnectWorkspace(
+        workspaceKey,
+      ).timeout(const Duration(seconds: 15));
       if (res['success'] == true) {
         _log('[bridge] reconnected $workspaceKey');
         session.degraded.value = null;
@@ -162,6 +189,10 @@ class RemoteClient {
       _workspaceListUpdatedController.add(payload['result']);
       return;
     }
+    if (type == 'app-error') {
+      _handleAppError(payload);
+      return;
+    }
     if (type == 'bridge-degraded') {
       _handleBridgeDegraded(payload);
       return;
@@ -185,9 +216,7 @@ class RemoteClient {
     final done = <String>[];
     _pendingMatchers.forEach((requestId, matcher) {
       final completer = _pendingCompleters[requestId];
-      if (completer != null &&
-          !completer.isCompleted &&
-          matcher(payload)) {
+      if (completer != null && !completer.isCompleted && matcher(payload)) {
         done.add(requestId);
         completer.complete(payload);
       }
@@ -209,21 +238,23 @@ class RemoteClient {
     _pendingMatchers[requestId] = match;
     _pendingCompleters[requestId] = completer;
     relay.sendPayload(payload);
-    return completer.future.timeout(timeout, onTimeout: () {
-      _pendingMatchers.remove(requestId);
-      _pendingCompleters.remove(requestId);
-      throw TimeoutException('request $requestId timed out');
-    });
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        _pendingMatchers.remove(requestId);
+        _pendingCompleters.remove(requestId);
+        throw TimeoutException('request $requestId timed out');
+      },
+    );
   }
 
   /// bootstrap-request -> bootstrap-response (workspaces overview).
   Future<Map<String, dynamic>> bootstrap() async {
     final id = _reqId('bootstrap');
-    final res = await request(
-      {'zcode_type': 'bootstrap-request', 'requestId': id},
-      (p) =>
-          p['zcode_type'] == 'bootstrap-response' && p['requestId'] == id,
-    );
+    final res = await request({
+      'zcode_type': 'bootstrap-request',
+      'requestId': id,
+    }, (p) => p['zcode_type'] == 'bootstrap-response' && p['requestId'] == id);
     return (res['result'] as Map?)?.cast<String, dynamic>() ?? res;
   }
 
@@ -233,18 +264,15 @@ class RemoteClient {
     final res = await request(
       {'zcode_type': 'workspace-list-request', 'requestId': id},
       (p) =>
-          p['zcode_type'] == 'workspace-list-response' &&
-          p['requestId'] == id,
+          p['zcode_type'] == 'workspace-list-response' && p['requestId'] == id,
     );
     return res['result'];
   }
 
   int _bridgeGeneration = 0;
   final _activeBridges = <BridgeSession>[];
-  final _frameRouters =
-      <String, void Function(Map<String, dynamic>)>{};
-  final _pendingBridgePayloads =
-      <String, List<Map<String, dynamic>>>{};
+  final _frameRouters = <String, void Function(Map<String, dynamic>)>{};
+  final _pendingBridgePayloads = <String, List<Map<String, dynamic>>>{};
 
   /// bridge-degraded (e.g. `rpc-transport-fault`): the desktop stopped the
   /// bridge transport. Mark it degraded and kick off the retrying recovery
@@ -354,8 +382,7 @@ class RemoteClient {
   /// Reopens a degraded/dead bridge: new `workspace-bridge-open` (fresh
   /// bridgeSessionId, bumped generation, carries recoveryId), then swaps
   /// the stack into the existing [BridgeSession].
-  Future<void> _reopenBridge(
-      BridgeSession session, String workspaceKey) async {
+  Future<void> _reopenBridge(BridgeSession session, String workspaceKey) async {
     final oldBridge = session.bridge;
     final bridgeSessionId = _reqId('bridge');
     final generation = ++_bridgeGeneration;
@@ -429,7 +456,20 @@ class RemoteClient {
     }
     await relay.dispose();
     await _workspaceListUpdatedController.close();
+    await _appErrorController.close();
   }
+}
+
+/// A relay-level `app-error`: the desktop/relay refused a request with a
+/// well-known reason. Reasons mirror the close-code family (`relayCloseReason`)
+/// plus the timeout/unsupported family that never becomes a close.
+class RemoteAppError implements Exception {
+  final String reason;
+  final String? message;
+  const RemoteAppError(this.reason, [this.message]);
+
+  @override
+  String toString() => message == null ? reason : '$reason: $message';
 }
 
 class BridgeSession {
@@ -460,22 +500,26 @@ class BridgeSession {
 
     degraded.addListener(check);
     check();
-    return completer.future.timeout(timeout, onTimeout: () {
-      degraded.removeListener(check);
-      throw TimeoutException('bridge 恢复超时: ${degraded.value}');
-    }).whenComplete(() => degraded.removeListener(check));
+    return completer.future
+        .timeout(
+          timeout,
+          onTimeout: () {
+            degraded.removeListener(check);
+            throw TimeoutException('bridge 恢复超时: ${degraded.value}');
+          },
+        )
+        .whenComplete(() => degraded.removeListener(check));
   }
 
   BridgeSession._({
     required Map<String, dynamic> bridge,
     required void Function(BridgeSession) onDispose,
-  })  : _bridge = bridge,
-        _transport = _placeholderTransport(bridge),
-        _channels = ChannelClient(sendBody: (_) {}),
-        _onDispose = onDispose;
+  }) : _bridge = bridge,
+       _transport = _placeholderTransport(bridge),
+       _channels = ChannelClient(sendBody: (_) {}),
+       _onDispose = onDispose;
 
-  static RpcFrameTransport _placeholderTransport(
-          Map<String, dynamic> bridge) =>
+  static RpcFrameTransport _placeholderTransport(Map<String, dynamic> bridge) =>
       RpcFrameTransport(
         bridgeSessionId: '${bridge['bridgeSessionId'] ?? ''}',
         sendPayload: (_) {},
@@ -510,11 +554,7 @@ class BridgeSession {
     final key = '${scope['workspaceIdentity'] ?? scope['workspacePath']}';
     return _conversations.putIfAbsent(
       key,
-      () => ConversationTransport(
-        session: this,
-        scope: scope,
-        onLog: onLog,
-      ),
+      () => ConversationTransport(session: this, scope: scope, onLog: onLog),
     );
   }
 

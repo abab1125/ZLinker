@@ -31,37 +31,58 @@ void main() {
     expect(calls.map((c) => c.$1).toList(), ['renameTask']);
   });
 
-  test('Session-named candidates key the id as sessionId', () async {
-    final port = TaskCommandsPort(
-      (method, args) async {
-        if (method == 'renameSession') return null;
-        throw ChannelRpcError('unknown method $method', null);
-      },
-    );
-    await port.rename('s1', 't');
-    // verified via the resolved-method behavior below (no throw) — arg
-    // shape asserted through the sibling test above.
-  });
-
-  test('arg shape: *Session* methods carry sessionId, others taskId',
-      () async {
+  test('confirmed schema: payloads always key the id as taskId', () async {
+    // Source-confirmed (web client, docs/parity/web-capabilities.md §4):
+    // zcode-task metadata commands take one object merging the workspace
+    // scope + taskId; no *Session* variants on this channel.
     Map? seen;
     final port = TaskCommandsPort(
       (method, args) async {
-        if (method == 'renameSession' || method == 'pinTask') {
-          seen = (args.single as Map).cast<String, Object?>();
-          return null;
-        }
-        throw ChannelRpcError('method not found: $method', null);
+        seen = (args.single as Map).cast<String, Object?>();
+        return null;
       },
     );
     await port.rename('s1', 't');
-    expect(seen!['sessionId'], 's1');
-    expect(seen!.containsKey('taskId'), isFalse);
+    expect(seen!['taskId'], 's1');
+    expect(seen!.containsKey('sessionId'), isFalse);
 
     await port.setPinned('s1', true);
     expect(seen!['taskId'], 's1');
     expect(seen!['pinned'], true);
+  });
+
+  test('archive is two distinct methods without a boolean field', () async {
+    final calls = <(String, Map<String, Object?>)>[];
+    final port = TaskCommandsPort(
+      (method, args) async {
+        calls.add((method, (args.single as Map).cast<String, Object?>()));
+        return null;
+      },
+      scope: () => {'workspacePath': '/repo'},
+    );
+
+    await port.setArchived('s1', true);
+    await port.setArchived('s1', false);
+    expect(calls.map((c) => c.$1).toList(), ['archiveTask', 'unarchiveTask']);
+    // the confirmed arg shape: scope + taskId only
+    for (final (_, payload) in calls) {
+      expect(payload, {'workspacePath': '/repo', 'taskId': 's1'});
+      expect(payload.containsKey('archived'), isFalse);
+    }
+  });
+
+  test('delete + listArchived use the confirmed method names', () async {
+    final methods = <String>[];
+    final port = TaskCommandsPort(
+      (method, args) async {
+        methods.add(method);
+        return null;
+      },
+      scope: () => {'workspacePath': '/repo'},
+    );
+    await port.delete('s1');
+    await port.listArchived();
+    expect(methods, ['deleteTask', 'listArchivedTasks']);
   });
 
   test('every candidate missing → first error rethrown', () async {

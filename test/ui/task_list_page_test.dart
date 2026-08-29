@@ -456,6 +456,18 @@ void main() {
         {'workspacePath': '/repo/alpha', 'workspaceIdentity': 'alpha'},
         {'workspacePath': '/repo/beta', 'workspaceIdentity': 'beta'},
       ],
+      // relay overview row for beta — the merged-source data non-active
+      // workspace cards render.
+      relayTasks: [
+        {
+          'taskId': 'rb1',
+          'title': '中继任务乙',
+          'workspacePath': '/repo/beta',
+          'workspaceIdentity': 'beta',
+          'displayStatus': 'idle',
+          'updatedAt': now,
+        },
+      ],
     );
     await tester.pumpWidget(wrap(TaskListPage(
       store: store,
@@ -519,28 +531,24 @@ void main() {
     expect(find.text('任务甲'), findsOneWidget);
   });
 
-  testWidgets('tapping a collapsed workspace expands and opens it',
+  testWidgets('tapping a collapsed workspace expands it without switching',
       (tester) async {
+    // Web mobile home parity: the header tap expands/collapses only —
+    // switching workspaces happens when opening a task (bridge-open rides
+    // the taskId).
     final (_, _, session) = await setupTwoWorkspaces(tester);
 
     await tester.tap(find.text('beta'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // beta became the active workspace and shows the task rows…
-    expect(session.activeWorkspace?['workspaceIdentity'], 'beta');
+    // beta expanded and shows its relay-sourced row…
     expect(
-      find.descendant(of: cardOf('beta'), matching: find.text('任务甲')),
+      find.descendant(of: cardOf('beta'), matching: find.text('中继任务乙')),
       findsOneWidget,
     );
-    // …while alpha falls back to its default (inactive → collapsed).
-    expect(
-      find
-          .descendant(of: cardOf('alpha'), matching: find.text('任务甲'))
-          .evaluate()
-          .isEmpty,
-      isTrue,
-    );
+    // …but the active workspace did NOT change.
+    expect(session.activeWorkspace?['workspaceIdentity'], 'alpha');
   });
 
   testWidgets('收起全部 collapses everything, then active re-expands alone',

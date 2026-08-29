@@ -12,7 +12,11 @@
 // SHOT_LOCALE picks the app UI language AND the seeded data language
 // (zh-CN default, en-US for the English set); each capture is suffixed
 // -zh / -en. Resize to store sizes afterwards (see docs/store/SCREENSHOTS.md).
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -96,6 +100,195 @@ final _sessions = _isEn
 final _workspaces = [
   {'workspacePath': '/Users/dev/ZLinker', 'workspaceIdentity': 'ZLinker'},
 ];
+
+/// Second workspace + relay overview tasks (`Dg`): feed the merged task
+/// data source (non-active workspace rows, archive view, tags).
+final _workspacesRich = [
+  {'workspacePath': '/Users/dev/ZLinker', 'workspaceIdentity': 'ZLinker'},
+  {
+    'workspacePath': '/Users/dev/api-server',
+    'workspaceIdentity': 'api-server',
+    'workspacePurpose': 'project',
+  },
+];
+
+final _relayTasks = _isEn
+    ? [
+        {
+          'taskId': 'sess_shot_1',
+          'title': 'ZLinker store copy & screenshots',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'running',
+          'pinned': true,
+          'updatedAt': _now - 1000 * 62,
+        },
+        {
+          'taskId': 'sess_shot_2',
+          'title': 'Deep dive: GitHub description generation',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 41,
+        },
+        {
+          'taskId': 'sess_shot_3',
+          'title': 'Off-peak: daily build patrol report',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 60 * 5,
+        },
+        {
+          'taskId': 'sess_await',
+          'title': 'Deploy staging after review',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'idle',
+          'updatedAt': _now - 1000 * 60 * 12,
+        },
+        {
+          'taskId': 'sess_unread',
+          'title': 'Refactor the notifier registry',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'unreadAt': _now - 1000 * 60 * 30,
+          'updatedAt': _now - 1000 * 60 * 30,
+        },
+        {
+          'taskId': 'relay_task_1',
+          'title': 'Rate-limit middleware for the public API',
+          'workspacePath': '/Users/dev/api-server',
+          'workspaceIdentity': 'api-server',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 90,
+        },
+        {
+          'taskId': 'relay_task_2',
+          'title': 'Migrate webhook logs to the cold table',
+          'workspacePath': '/Users/dev/api-server',
+          'workspaceIdentity': 'api-server',
+          'displayStatus': 'idle',
+          'archived': true,
+          'updatedAt': _now - 1000 * 60 * 60 * 26,
+        },
+        {
+          'taskId': 'relay_task_3',
+          'title': 'Audit CI cache keys',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'error',
+          'archived': true,
+          'updatedAt': _now - 1000 * 60 * 60 * 40,
+        },
+      ]
+    : [
+        {
+          'taskId': 'sess_shot_1',
+          'title': 'ZLinker 商店页文案与截图',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'running',
+          'pinned': true,
+          'updatedAt': _now - 1000 * 62,
+        },
+        {
+          'taskId': 'sess_shot_2',
+          'title': '深度解析 GitHub 描述生成',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 41,
+        },
+        {
+          'taskId': 'sess_shot_3',
+          'title': '闲时任务：每日构建巡检报告',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 60 * 5,
+        },
+        {
+          'taskId': 'sess_await',
+          'title': '评审后部署到预发环境',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'idle',
+          'updatedAt': _now - 1000 * 60 * 12,
+        },
+        {
+          'taskId': 'sess_unread',
+          'title': '重构通知器注册表',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'completed',
+          'unreadAt': _now - 1000 * 60 * 30,
+          'updatedAt': _now - 1000 * 60 * 30,
+        },
+        {
+          'taskId': 'relay_task_1',
+          'title': '公网 API 限流中间件',
+          'workspacePath': '/Users/dev/api-server',
+          'workspaceIdentity': 'api-server',
+          'displayStatus': 'completed',
+          'updatedAt': _now - 1000 * 60 * 90,
+        },
+        {
+          'taskId': 'relay_task_2',
+          'title': 'Webhook 日志迁移到冷表',
+          'workspacePath': '/Users/dev/api-server',
+          'workspaceIdentity': 'api-server',
+          'displayStatus': 'idle',
+          'archived': true,
+          'updatedAt': _now - 1000 * 60 * 60 * 26,
+        },
+        {
+          'taskId': 'relay_task_3',
+          'title': '审计 CI 缓存键',
+          'workspacePath': '/Users/dev/ZLinker',
+          'workspaceIdentity': 'ZLinker',
+          'displayStatus': 'error',
+          'archived': true,
+          'updatedAt': _now - 1000 * 60 * 60 * 40,
+        },
+      ];
+
+/// Live-index extras: a task waiting for permission confirmation and an
+/// unread one — the official 等待确认 tag + unread dot.
+final _extraSessions = _isEn
+    ? [
+        {
+          'sessionId': 'sess_await',
+          'title': 'Deploy staging after review',
+          'phase': 'completedInterrupted',
+          'pendingInteraction': {'kind': 'permission'},
+          'lastActivityAt': _now - 1000 * 60 * 12,
+        },
+        {
+          'sessionId': 'sess_unread',
+          'title': 'Refactor the notifier registry',
+          'phase': 'completedSuccess',
+          'unreadAt': _now - 1000 * 60 * 30,
+          'lastActivityAt': _now - 1000 * 60 * 30,
+        },
+      ]
+    : [
+        {
+          'sessionId': 'sess_await',
+          'title': '评审后部署到预发环境',
+          'phase': 'completedInterrupted',
+          'pendingInteraction': {'kind': 'permission'},
+          'lastActivityAt': _now - 1000 * 60 * 12,
+        },
+        {
+          'sessionId': 'sess_unread',
+          'title': '重构通知器注册表',
+          'phase': 'completedSuccess',
+          'unreadAt': _now - 1000 * 60 * 30,
+          'lastActivityAt': _now - 1000 * 60 * 30,
+        },
+      ];
 
 /// Seeded server-side automations for the automations page capture.
 final _automations = _isEn
@@ -197,15 +390,57 @@ final _chatRows = _isEn
         },
       ];
 
+final _captureKey = GlobalKey();
+
 Widget _wrap(Widget child, ThemeController theme, UiSettings ui) =>
-    MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
-      themeMode: ThemeMode.dark,
-      builder: (context, child) => UiSettingsProvider(settings: ui, child: child!),
-      home: child,
+    // The boundary wraps the WHOLE MaterialApp: modal sheets, dialogs and
+    // popup menus render in the navigator's overlay, above `home`.
+    RepaintBoundary(
+      key: _captureKey,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: ThemeMode.dark,
+        builder: (context, child) =>
+            UiSettingsProvider(settings: ui, child: child!),
+        home: child,
+      ),
     );
+
+final _phoneKey = GlobalKey();
+
+/// Rasterize the phone-shaped viewport ([_phoneKey]).
+Future<void> _capturePhone(WidgetTester tester, String name) async {
+  final boundary =
+      _phoneKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final image = await boundary.toImage(pixelRatio: 2.0);
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  final dir =
+      Directory(Platform.environment['ZLINKER_SHOT_DIR'] ?? 'docs/screenshots');
+  await dir.create(recursive: true);
+  await File('${dir.path}/$name.png').writeAsBytes(data!.buffer.asUint8List());
+  await tester.pump(const Duration(milliseconds: 100));
+}
+
+/// Desktop fallback for `binding.takeScreenshot` (its platform channel is
+/// mobile-only): rasterize the app RepaintBoundary and write the PNG.
+Future<void> _capture(WidgetTester tester, String name) async {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    final boundary =
+        _captureKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final image = await boundary.toImage(pixelRatio: 2.0);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    final dir = Directory(Platform.environment['ZLINKER_SHOT_DIR'] ?? 'docs/screenshots');
+    await dir.create(recursive: true);
+    await File('${dir.path}/$name.png')
+        .writeAsBytes(data!.buffer.asUint8List());
+    await tester.pump(const Duration(milliseconds: 100));
+  } else {
+    await IntegrationTestWidgetsFlutterBinding.ensureInitialized()
+        .takeScreenshot(name);
+  }
+}
 
 /// Hub that answers from injected fakes and never opens a real relay —
 /// otherwise DeviceSessionHub connects to the seeded (bogus) URLs and its
@@ -280,9 +515,11 @@ void main() {
 
     // Android renders Flutter into an external surface; convert it to an
     // image so takeScreenshot can read pixels (required before the 1st shot).
-    await binding.convertFlutterSurfaceToImage();
-    await tester.pump(const Duration(milliseconds: 300));
-    await binding.takeScreenshot('01-devices$_suffix');
+    if (Platform.isAndroid) {
+      await binding.convertFlutterSurfaceToImage();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    await _capture(tester, '01-devices$_suffix');
 
     // 2. Native task list. In image-surface mode the rasterizer keeps
     // scheduling frames, so pumpAndSettle never returns — pump real time
@@ -298,7 +535,114 @@ void main() {
       ui,
     ));
     await tester.pump(const Duration(milliseconds: 1500));
-    await binding.takeScreenshot('02-tasks$_suffix');
+    await _capture(tester, '02-tasks$_suffix');
+
+    // 2a-2d. Task list parity captures: merged relay data (non-active
+    // workspace rows), official tags (等待确认 / unread), the long-press
+    // action sheet, the delete confirmation and the archive view.
+    final sessionRich = FakeDeviceSession(
+      deviceId: deviceA.id,
+      params: deviceA.params!,
+      entries: [..._sessions, ..._extraSessions],
+      workspaces: _workspacesRich,
+      relayTasks: _relayTasks,
+      chatRows: _chatRows,
+    );
+    // Phone-shaped viewport with a NESTED navigator: the parity target is
+    // the official mobile layout (the Windows window itself is a wide
+    // desktop surface), and modal sheets/dialogs/menus must render inside
+    // the captured frame, so they resolve against the nested navigator.
+    const phoneBox = Size(400, 850);
+    Future<void> pumpTasks() async {
+      await tester.pumpWidget(_wrap(
+        Center(
+          child: RepaintBoundary(
+            key: _phoneKey,
+            child: SizedBox(
+              width: phoneBox.width,
+              height: phoneBox.height,
+              child: Navigator(
+                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                  builder: (_) => TaskListPage(
+                    store: store,
+                    hub: hub,
+                    device: deviceA,
+                    sessionOverride: sessionRich,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        theme,
+        ui,
+      ));
+      await tester.pump(const Duration(milliseconds: 1200));
+    }
+
+    await pumpTasks();
+    await _capturePhone(tester, '02a-tasks-merge$_suffix');
+
+    // Scrolled view: bring the non-active workspace into view (a
+    // ListView.builder never builds offscreen children), expand it
+    // (official default has only the active one expanded) and capture its
+    // relay-sourced rows.
+    await tester.scrollUntilVisible(
+      find.text('api-server'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.tap(find.text('api-server'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _capturePhone(tester, '02a2-tasks-scrolled$_suffix');
+    // reset scroll for the following captures
+    await tester.drag(find.byType(ListView).first, const Offset(0, 600));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    await pumpTasks();
+    await tester.longPress(find.text(
+        _isEn ? 'Deploy staging after review' : '评审后部署到预发环境'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _capturePhone(tester, '02b-task-actions$_suffix');
+
+    // Same open sheet: tap 删除 → official confirm dialog, then cancel and
+    // dismiss (the scrim lives in the navigator overlay, one fresh pump set
+    // fully closes the stack before the archive capture).
+    await tester.tap(find.text(_isEn ? 'Delete' : '删除'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _capturePhone(tester, '02c-task-delete-confirm$_suffix');
+
+    await tester.tap(find.text(_isEn ? 'Cancel' : '取消'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.tapAt(const Offset(20, 60));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    await pumpTasks();
+    await tester.tap(find.byIcon(Icons.more_vert));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.tap(find.text(_isEn ? 'View archive' : '查看归档'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _capturePhone(tester, '02d-archive$_suffix');
+    sessionRich.dispose();
 
     // 3. Conversation
     await tester.pumpWidget(_wrap(
@@ -311,7 +655,7 @@ void main() {
       ui,
     ));
     await tester.pump(const Duration(milliseconds: 1500));
-    await binding.takeScreenshot('03-chat$_suffix');
+    await _capture(tester, '03-chat$_suffix');
 
     // 4. Automations (server-side cron list with seeded items). Prewarm the
     // automation port so the pane's in-build fetch hits an already-resolved
@@ -330,7 +674,7 @@ void main() {
     // ignore: avoid_print
     print('auto card found: '
         '${find.text(_isEn ? 'Daily build patrol' : '每日构建巡检').evaluate().length}');
-    await binding.takeScreenshot('04-automations$_suffix');
+    await _capture(tester, '04-automations$_suffix');
 
     // 5. Tablet dual-pane (runs only when the device surface is ≥768dp wide,
     // i.e. the simulator has a tablet profile):
@@ -355,7 +699,7 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 300));
       }
-      await binding.takeScreenshot('05-dualpane$_suffix');
+      await _capture(tester, '05-dualpane$_suffix');
     }
   });
 }

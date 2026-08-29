@@ -17,19 +17,17 @@ class FakeDeviceSession extends DeviceSession {
     required super.params,
     List<Map<String, dynamic>> entries = const [],
     List<Map<String, dynamic>> workspaces = const [],
+    this.relayTasks = const [],
     this._chatRows = const [],
     this.channelHandler,
-  })  : status = DeviceStatus.connected,
-        sessions = SessionsIndexState(),
-        super() {
+  }) : status = DeviceStatus.connected,
+       sessions = SessionsIndexState(),
+       super() {
     sessions.applyFrame({
       'toSeq': 1,
       'payload': {
         'kind': 'snapshot',
-        'snapshot': {
-          'workspaceId': 'ws-1',
-          'sessions': entries,
-        },
+        'snapshot': {'workspaceId': 'ws-1', 'sessions': entries},
       },
     }, onGap: () {});
     _workspaces = workspaces;
@@ -37,18 +35,29 @@ class FakeDeviceSession extends DeviceSession {
   }
 
   late List<Map<String, dynamic>> _workspaces;
+
+  /// Seeded relay overview tasks (`Dg`).
+  @override
+  List<Map<String, dynamic>> relayTasks;
   Map<String, dynamic>? _active;
   final List<Map<String, dynamic>> _chatRows;
 
   /// Optional local answers for channel RPCs; every call is recorded in
   /// [channelCalls] regardless.
   final Future<dynamic> Function(
-      String channel, String method, List<Object?> args)? channelHandler;
+    String channel,
+    String method,
+    List<Object?> args,
+  )?
+  channelHandler;
   final List<(String, String, List<Object?>)> channelCalls = [];
 
   @override
-  Future<dynamic> callChannel(String channel, String method,
-      [List<Object?> args = const []]) async {
+  Future<dynamic> callChannel(
+    String channel,
+    String method, [
+    List<Object?> args = const [],
+  ]) async {
     channelCalls.add((channel, method, args));
     final handler = channelHandler;
     if (handler != null) return handler(channel, method, args);
@@ -59,6 +68,10 @@ class FakeDeviceSession extends DeviceSession {
   List<Map<String, dynamic>> get workspaces => _workspaces;
   @override
   Map<String, dynamic>? get activeWorkspace => _active;
+
+  /// Seeded failure reason (app-error / close-code mapping).
+  @override
+  String? failureReason;
 
   @override
   Map<String, dynamic> get offPeakScope {
@@ -74,7 +87,10 @@ class FakeDeviceSession extends DeviceSession {
   Future<void> reloadTasks() async {}
 
   @override
-  Future<void> openWorkspace(Map<String, dynamic> workspace) async {
+  Future<void> openWorkspace(
+    Map<String, dynamic> workspace, {
+    String? taskId,
+  }) async {
     _active = workspace;
     notifyListeners();
   }
@@ -91,10 +107,7 @@ class FakeDeviceSession extends DeviceSession {
             'sessionId': sessionId,
             'logEpoch': 'e1',
             'revision': 1,
-            'rows': {
-              'window': _chatRows,
-              'totalCount': _chatRows.length,
-            },
+            'rows': {'window': _chatRows, 'totalCount': _chatRows.length},
           },
         },
       }, onGap: () {});
@@ -104,39 +117,39 @@ class FakeDeviceSession extends DeviceSession {
 
   @override
   Future<WorkspacePrep> prepareWorkspace() async => WorkspacePrep.fromMap({
-        'configOptions': [
+    'configOptions': [
+      {
+        'id': 'model',
+        'name': '模型',
+        'currentValue': 'builtin/glm-5.2',
+        'options': [
           {
-            'id': 'model',
-            'name': '模型',
-            'currentValue': 'builtin/glm-5.2',
-            'options': [
-              {
-                'value': 'builtin/glm-5.2',
-                'name': 'GLM-5.2',
-                'modelProviderName': 'BigModel',
-              },
-              {
-                'value': 'kimi/moonshot-v2',
-                'name': 'Moonshot V2',
-                'modelProviderName': 'kimi_zz',
-              },
-            ],
+            'value': 'builtin/glm-5.2',
+            'name': 'GLM-5.2',
+            'modelProviderName': 'BigModel',
           },
           {
-            'id': 'thought_level',
-            'name': '思考等级',
-            'currentValue': 'max',
-            'options': [
-              {'value': 'max', 'name': '最高'},
-              {'value': 'high', 'name': '高'},
-              {'value': 'nothink', 'name': '关闭'},
-            ],
+            'value': 'kimi/moonshot-v2',
+            'name': 'Moonshot V2',
+            'modelProviderName': 'kimi_zz',
           },
         ],
-        'slashCommands': [
-          {'name': 'compact', 'description': '压缩上下文', 'source': 'builtin'},
+      },
+      {
+        'id': 'thought_level',
+        'name': '思考等级',
+        'currentValue': 'max',
+        'options': [
+          {'value': 'max', 'name': '最高'},
+          {'value': 'high', 'name': '高'},
+          {'value': 'nothink', 'name': '关闭'},
         ],
-      });
+      },
+    ],
+    'slashCommands': [
+      {'name': 'compact', 'description': '压缩上下文', 'source': 'builtin'},
+    ],
+  });
 
   @override
   Future<List<SkillEntry>> skills() async => const [];

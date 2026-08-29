@@ -26,8 +26,11 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   /// Extra snapshot fields merged into every feed (queue, interactions...).
   Map<String, dynamic> snapshotExtra = const {};
 
-  void feedSnapshot(List<Map<String, dynamic>> rows,
-      {int? firstRowId, int? totalCount}) {
+  void feedSnapshot(
+    List<Map<String, dynamic>> rows, {
+    int? firstRowId,
+    int? totalCount,
+  }) {
     state.applyFrame({
       'toSeq': state.seq + 1,
       'payload': {
@@ -113,6 +116,12 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   @override
   Future<dynamic> setTaskUnread(String sessionId, bool unread) async =>
       _rec('setTaskUnread', [sessionId, unread]);
+  @override
+  Future<dynamic> deleteTask(String sessionId) async =>
+      _rec('deleteTask', [sessionId]);
+
+  @override
+  void sendViewState({String? taskId}) {}
 
   @override
   Future<String> createSession(
@@ -126,15 +135,19 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   }
 
   @override
-  Future<dynamic> sendText(String sessionId, String text,
-          {List<Map<String, dynamic>>? attachments,
-          String? heldQueueDisposition}) async =>
-      _rec('sendText', [sessionId, text, heldQueueDisposition]);
+  Future<dynamic> sendText(
+    String sessionId,
+    String text, {
+    List<Map<String, dynamic>>? attachments,
+    String? heldQueueDisposition,
+  }) async => _rec('sendText', [sessionId, text, heldQueueDisposition]);
 
   @override
-  Future<dynamic> sendGoalCommand(String sessionId, String text,
-          {String? heldQueueDisposition}) async =>
-      _rec('sendGoalCommand', [sessionId, text]);
+  Future<dynamic> sendGoalCommand(
+    String sessionId,
+    String text, {
+    String? heldQueueDisposition,
+  }) async => _rec('sendGoalCommand', [sessionId, text]);
 
   @override
   Future<dynamic> stop(String sessionId) async => _rec('stop', [sessionId]);
@@ -149,11 +162,12 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
       _rec('resumeGoal', [sessionId]);
 
   @override
-  Future<dynamic> switchModelConfig(String sessionId,
-          {required String provider,
-          required String model,
-          required String thought}) async =>
-      _rec('switchModelConfig', [sessionId, provider, model, thought]);
+  Future<dynamic> switchModelConfig(
+    String sessionId, {
+    required String provider,
+    required String model,
+    required String thought,
+  }) async => _rec('switchModelConfig', [sessionId, provider, model, thought]);
 
   @override
   Future<dynamic> switchCollaborationMode(String sessionId, String mode) =>
@@ -165,9 +179,11 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
 
   @override
   Future<dynamic> setAssistantFeedback(
-          String sessionId, Map<String, dynamic> target, String? feedback) =>
-      Future.value(
-          _rec('setAssistantFeedback', [sessionId, target, feedback]));
+    String sessionId,
+    Map<String, dynamic> target,
+    String? feedback,
+  ) =>
+      Future.value(_rec('setAssistantFeedback', [sessionId, target, feedback]));
 
   @override
   Future<dynamic> resolveInteraction(
@@ -177,36 +193,41 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
     String? freeText,
     String? action,
     Map<String, dynamic>? content,
-  }) =>
-      Future.value(_rec('resolveInteraction',
-          [sessionId, interactionId, optionId, content]));
+  }) => Future.value(
+    _rec('resolveInteraction', [sessionId, interactionId, optionId, content]),
+  );
 
   @override
-  Future<dynamic> rowsRange(String sessionId,
-          {int? beforeRowId, int limit = 60}) async =>
-      _rec('rowsRange', [sessionId, beforeRowId, limit]);
+  Future<dynamic> rowsRange(
+    String sessionId, {
+    int? beforeRowId,
+    int limit = 60,
+  }) async => _rec('rowsRange', [sessionId, beforeRowId, limit]);
 
   @override
-  Future<Map<String, dynamic>> attachmentPut(String sessionId,
-          {required String fileName,
-          required String mime,
-          required Uint8List bytes,
-          void Function(double progress)? onProgress}) async =>
-      {'ref': 'r1', 'fileName': fileName, 'mime': mime, 'bytes': 1};
+  Future<Map<String, dynamic>> attachmentPut(
+    String sessionId, {
+    required String fileName,
+    required String mime,
+    required Uint8List bytes,
+    void Function(double progress)? onProgress,
+  }) async => {'ref': 'r1', 'fileName': fileName, 'mime': mime, 'bytes': 1};
 
   @override
   Future<({Uint8List bytes, String? mediaType})> attachmentRead(
-          String sessionId,
-          {required String ref}) async =>
-      (bytes: Uint8List(0), mediaType: 'application/octet-stream');
+    String sessionId, {
+    required String ref,
+  }) async => (bytes: Uint8List(0), mediaType: 'application/octet-stream');
 
   @override
   Future<dynamic> sendQueuedNow(String sessionId, String queueItemId) async =>
       _rec('sendQueuedNow', [sessionId, queueItemId]);
   @override
   Future<dynamic> editQueueItem(
-          String sessionId, String queueItemId, String newText) async =>
-      _rec('editQueueItem', [sessionId, queueItemId, newText]);
+    String sessionId,
+    String queueItemId,
+    String newText,
+  ) async => _rec('editQueueItem', [sessionId, queueItemId, newText]);
   @override
   Future<dynamic> deleteQueueItem(String sessionId, String queueItemId) async =>
       _rec('deleteQueueItem', [sessionId, queueItemId]);
@@ -216,52 +237,53 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   @override
   Future<dynamic> plans(String sessionId) async => _rec('plans', [sessionId]);
   @override
-  Future<dynamic> fileChanges(String sessionId,
-          {required Map<String, dynamic> target}) async =>
-      _rec('fileChanges', [sessionId, target]);
+  Future<dynamic> fileChanges(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  }) async => _rec('fileChanges', [sessionId, target]);
   @override
   Future<dynamic> retryTurn(String sessionId, Map<String, dynamic> target) =>
       Future.value(_rec('retryTurn', [sessionId, target]));
   @override
-  Future<dynamic> forkAssistant(String sessionId, Map<String, dynamic> target) =>
-      Future.value(_rec('forkAssistant', [sessionId, target]));
+  Future<dynamic> forkAssistant(
+    String sessionId,
+    Map<String, dynamic> target,
+  ) => Future.value(_rec('forkAssistant', [sessionId, target]));
   @override
-  Future<dynamic> editUserQuery(String sessionId,
-          Map<String, dynamic> target, String newText) =>
-      Future.value(_rec('editUserQuery', [sessionId, target, newText]));
+  Future<dynamic> editUserQuery(
+    String sessionId,
+    Map<String, dynamic> target,
+    String newText,
+  ) => Future.value(_rec('editUserQuery', [sessionId, target, newText]));
   @override
-  Future<dynamic> applyFileRewind(String sessionId, Map<String, dynamic> target) =>
-      Future.value(_rec('applyFileRewind', [sessionId, target]));
+  Future<dynamic> applyFileRewind(
+    String sessionId,
+    Map<String, dynamic> target,
+  ) => Future.value(_rec('applyFileRewind', [sessionId, target]));
 }
 
 Widget wrap(Widget child) => MaterialApp(
-      theme: buildDarkTheme(),
-      darkTheme: buildDarkTheme(),
-      builder: (context, child) =>
-          UiSettingsProvider(settings: UiSettings(), child: child!),
-      home: child,
-    );
+  theme: buildDarkTheme(),
+  darkTheme: buildDarkTheme(),
+  builder: (context, child) =>
+      UiSettingsProvider(settings: UiSettings(), child: child!),
+  home: child,
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('renders user bubble, assistant markdown and turn footer',
-      (tester) async {
+  testWidgets('renders user bubble, assistant markdown and turn footer', (
+    tester,
+  ) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: '修复登录')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: '修复登录')),
+    );
     // subscribe resolves on the next microtask; feed before settle
     gateway.feedSnapshot([
-      {
-        'rowId': 1,
-        'kind': 'userInput',
-        'text': '帮我修复登录',
-      },
-      {
-        'rowId': 2,
-        'kind': 'assistantText',
-        'text': '已修复 **登录** 问题',
-      },
+      {'rowId': 1, 'kind': 'userInput', 'text': '帮我修复登录'},
+      {'rowId': 2, 'kind': 'assistantText', 'text': '已修复 **登录** 问题'},
       {
         'rowId': 3,
         'kind': 'turnHeader',
@@ -284,7 +306,8 @@ void main() {
   testWidgets('tool call renders summary + expandable diff', (tester) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': '改一下'},
       {
@@ -313,8 +336,9 @@ void main() {
     expect(find.textContaining('+b'), findsWidgets);
   });
 
-  testWidgets('permission interaction resolves through the gateway',
-      (tester) async {
+  testWidgets('permission interaction resolves through the gateway', (
+    tester,
+  ) async {
     final gateway = FakeChatGateway();
     gateway.snapshotExtra = {
       'pendingInteractions': [
@@ -329,11 +353,12 @@ void main() {
               {'optionId': 'o2', 'kind': 'deny'},
             ],
           },
-        }
+        },
       ],
     };
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
     ]);
@@ -363,7 +388,8 @@ void main() {
       },
     };
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
     ]);
@@ -375,13 +401,16 @@ void main() {
     // confirm dialog
     await tester.tap(find.text('删除').last);
     await tester.pump();
-    final call =
-        gateway.calls.where((c) => c.$1 == 'deleteQueueItem').toList().single;
+    final call = gateway.calls
+        .where((c) => c.$1 == 'deleteQueueItem')
+        .toList()
+        .single;
     expect(call.$2, ['s1', 'q1']);
   });
 
-  testWidgets('draft mode: first send issues createSession with firstText',
-      (tester) async {
+  testWidgets('draft mode: first send issues createSession with firstText', (
+    tester,
+  ) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(wrap(ChatPage(gateway: gateway, title: '新任务')));
     await tester.pumpAndSettle();
@@ -395,8 +424,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    final call =
-        gateway.calls.where((c) => c.$1 == 'createSession').toList().single;
+    final call = gateway.calls
+        .where((c) => c.$1 == 'createSession')
+        .toList()
+        .single;
     expect(call.$2[0], 'ws-1');
     expect(call.$2[1], '开始分析');
   });
@@ -404,7 +435,8 @@ void main() {
   testWidgets('existing session: send goes through sendText', (tester) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
     ]);
@@ -415,15 +447,15 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
-    final call =
-        gateway.calls.where((c) => c.$1 == 'sendText').toList().single;
+    final call = gateway.calls.where((c) => c.$1 == 'sendText').toList().single;
     expect(call.$2, ['s1', '继续', null]);
   });
 
   testWidgets('kicked gateway shows the takeover overlay', (tester) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
     ]);
@@ -441,7 +473,8 @@ void main() {
     final gateway = FakeChatGateway()
       ..failSubscribeWith = (m) => StateError('bridge down');
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     // finite pumps: the page shows an endless connect spinner on failure,
     // pumpAndSettle would time out on it.
     await tester.pump();
@@ -450,11 +483,11 @@ void main() {
     expect(find.text('重试'), findsOneWidget);
   });
 
-  testWidgets('reasoning rows collapse into the 思考过程 strip',
-      (tester) async {
+  testWidgets('reasoning rows collapse into the 思考过程 strip', (tester) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
       {'rowId': 2, 'kind': 'reasoning', 'text': '让我想想'},
@@ -470,24 +503,29 @@ void main() {
   testWidgets('timeline markers render as centered capsules', (tester) async {
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
       {
         'rowId': 2,
         'kind': 'timelineMarker',
-        'marker': {'type': 'modelChange', 'fromModel': 'glm-5.2', 'toModel': 'glm-5.2-air'},
+        'marker': {
+          'type': 'modelChange',
+          'fromModel': 'glm-5.2',
+          'toModel': 'glm-5.2-air',
+        },
       },
       {'rowId': 3, 'kind': 'assistantText', 'text': 'ok'},
     ]);
     await tester.pumpAndSettle();
 
-    expect(
-        find.textContaining('模型已切换 glm-5.2 → glm-5.2-air'), findsOneWidget);
+    expect(find.textContaining('模型已切换 glm-5.2 → glm-5.2-air'), findsOneWidget);
   });
 
-  testWidgets('user bubble hugs short text (no maxLines inflation)',
-      (tester) async {
+  testWidgets('user bubble hugs short text (no maxLines inflation)', (
+    tester,
+  ) async {
     // Regression: SelectableText(maxLines: 14) inflated short bubbles to
     // 14 lines inside the unbounded ListView; the bubble must hug content.
     tester.view.devicePixelRatio = 1.0;
@@ -495,7 +533,8 @@ void main() {
     addTearDown(tester.view.reset);
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': '你好', 'state': 'done'},
       {'rowId': 2, 'kind': 'assistantText', 'text': '回复', 'state': 'done'},
@@ -505,14 +544,16 @@ void main() {
     expect(tester.getSize(find.text('你好')).height, lessThan(30));
   });
 
-  testWidgets('long user text collapses to 14 lines, 展开 reveals all',
-      (tester) async {
+  testWidgets('long user text collapses to 14 lines, 展开 reveals all', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     final longText = List.filled(30, '一行长文本内容').join('\n');
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': longText, 'state': 'done'},
@@ -523,24 +564,34 @@ void main() {
 
     final bubbleText = find.textContaining('一行长文本内容');
     final clip = find.ancestor(
-        of: bubbleText, matching: find.byType(SingleChildScrollView));
+      of: bubbleText,
+      matching: find.byType(SingleChildScrollView),
+    );
     expect(clip, findsOneWidget);
     expect(tester.getSize(clip).height, lessThanOrEqualTo(14 * 21.0 + 1));
 
     await tester.tap(find.text('展开'));
     await tester.pump();
-    expect(find.ancestor(of: bubbleText, matching: find.byType(SingleChildScrollView)),
-        findsNothing);
+    expect(
+      find.ancestor(
+        of: bubbleText,
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+    );
     expect(tester.getSize(bubbleText).height, greaterThan(14 * 21.0));
   });
 
-  testWidgets('send button disabled while the composer is empty', (tester) async {
+  testWidgets('send button disabled while the composer is empty', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
     final gateway = FakeChatGateway();
     await tester.pumpWidget(
-        wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi', 'state': 'done'},
     ]);
@@ -548,9 +599,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     IconButton buttonOf() => tester.widget<IconButton>(
-        find.ancestor(
+      find
+          .ancestor(
             of: find.byIcon(Icons.arrow_upward),
-            matching: find.byType(IconButton)).first);
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
     expect(buttonOf().onPressed, isNull); // empty input → disabled
 
     await tester.enterText(find.byType(TextField), '继续');
@@ -558,14 +613,16 @@ void main() {
     expect(buttonOf().onPressed, isNotNull);
   });
 
-  testWidgets('更多 menu: official order and pin toggle flips label',
-      (tester) async {
+  testWidgets('更多 menu: official order and pin toggle flips label', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
     final gateway = FakeChatGateway();
-    await tester.pumpWidget(wrap(
-        ChatPage(gateway: gateway, sessionId: 's1', title: 't')));
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
     gateway.feedSnapshot([
       {'rowId': 1, 'kind': 'userInput', 'text': 'hi', 'state': 'done'},
     ]);

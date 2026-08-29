@@ -113,8 +113,9 @@ String trP(BuildContext context, String key, List<String> args) {
 
 /// Relative-time formatting using the 'time.*' table keys.
 String relativeTime(BuildContext context, int ms) {
-  final diff =
-      DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+  final diff = DateTime.now().difference(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+  );
   // Future timestamps (an automation's 下次运行) read as "in n …".
   if (diff.isNegative) {
     final future = -diff;
@@ -127,10 +128,9 @@ String relativeTime(BuildContext context, int ms) {
     if (future.inDays < 30) {
       return trP(context, 'time.daysLater', ['${future.inDays}']);
     }
-    return DateTime.fromMillisecondsSinceEpoch(ms)
-        .toLocal()
-        .toString()
-        .substring(0, 10);
+    return DateTime.fromMillisecondsSinceEpoch(
+      ms,
+    ).toLocal().toString().substring(0, 10);
   }
   if (diff.inMinutes < 1) return tr(context, 'time.justNow');
   if (diff.inHours < 1) {
@@ -142,16 +142,16 @@ String relativeTime(BuildContext context, int ms) {
   if (diff.inDays < 30) {
     return trP(context, 'time.daysAgo', ['${diff.inDays}']);
   }
-  return DateTime.fromMillisecondsSinceEpoch(ms)
-      .toLocal()
-      .toString()
-      .substring(0, 10);
+  return DateTime.fromMillisecondsSinceEpoch(
+    ms,
+  ).toLocal().toString().substring(0, 10);
 }
 
 /// Official list/sidebar compact relative time: `27分` / `1小时` / `13天`.
 String relativeTimeShort(BuildContext context, int ms) {
-  final diff =
-      DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+  final diff = DateTime.now().difference(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+  );
   if (diff.inMinutes < 1) return tr(context, 'time.short.justNow');
   if (diff.inHours < 1) {
     return trP(context, 'time.short.minutes', ['${diff.inMinutes}']);
@@ -162,10 +162,9 @@ String relativeTimeShort(BuildContext context, int ms) {
   if (diff.inDays < 30) {
     return trP(context, 'time.short.days', ['${diff.inDays}']);
   }
-  return DateTime.fromMillisecondsSinceEpoch(ms)
-      .toLocal()
-      .toString()
-      .substring(0, 10);
+  return DateTime.fromMillisecondsSinceEpoch(
+    ms,
+  ).toLocal().toString().substring(0, 10);
 }
 
 const _zh = {
@@ -178,7 +177,8 @@ const _zh = {
   'devices.add.paste': '粘贴链接添加',
   'devices.add.pasteHint': '粘贴远程控制 URL',
   'devices.add.pasteTitle': '粘贴链接添加',
-  'devices.add.pasteHint2': 'https://zcode.z.ai/remote/v4?sid=...&hash=...&t=...',
+  'devices.add.pasteHint2':
+      'https://zcode.z.ai/remote/v4?sid=...&hash=...&t=...',
   'devices.add.cancel': '取消',
   'devices.add.confirm': '添加',
   'devices.add.savedUnparsed': 'URL 无法解析，但仍已保存',
@@ -257,6 +257,41 @@ const _zh = {
   'phase.error': '出错',
   'phase.draft': '草稿',
   'phase.paused': '已暂停',
+  'phase.idle': '待命',
+  // ---- task actions & tags (web taskList/task-item menu parity) ----
+  'tasks.awaiting': '等待确认',
+  'tasks.renamePlaceholder': '任务名称',
+  'tasks.action.pin': '置顶',
+  'tasks.action.unpin': '取消置顶',
+  'tasks.action.rename': '重命名',
+  'tasks.action.archive': '归档',
+  'tasks.action.unarchive': '取消归档',
+  'tasks.action.archiveView': '查看归档',
+  'tasks.action.unarchiveView': '退出归档视图',
+  'tasks.action.markUnread': '标记为未读',
+  'tasks.action.markRead': '标记为已读',
+  'tasks.action.delete': '删除',
+  'tasks.action.deleteTitle': '删除这个任务？',
+  'tasks.action.deleteDesc': '任务「\$0」会从当前工作区移除，现有记录无法恢复。',
+  'tasks.workspaceKind.local': '本地',
+  'tasks.workspaceKind.conversation': '对话',
+  'tasks.workspaceKind.remote': '远程',
+  'common.cancel': '取消',
+  'common.save': '保存',
+  // ---- webRemoteControl failure states (official copy) ----
+  'remote.failure.session-not-found': '当前 Web 远程控制链接已经失效，请回到桌面端重新开启一次。',
+  'remote.failure.session-expired': '这次 Web 远程控制会话已经结束了，需要在桌面端重新生成新的链接。',
+  'remote.failure.session-conflict': '这个链接已经被其他页面占用，请关闭旧页面后重新扫码。',
+  'remote.failure.kicked': 'relay 已踢出这次配对，请关闭其他页面后从桌面端重新生成二维码。',
+  'remote.failure.workspace-closed': '桌面端共享的窗口已经关闭，请回到桌面端重新发起访问。',
+  'remote.failure.desktop-disconnected': '桌面端已经断开连接，当前 Web 远程控制无法继续使用。',
+  'remote.failure.invalid-mobile-connection': '当前手机连接已失效，请刷新页面后重新连接。',
+  'remote.failure.desktop-bootstrap-timeout': '桌面端响应超时，请确认窗口仍在运行后刷新页面。',
+  'remote.failure.connection-recovery-timeout':
+      '手机端连接恢复超时，当前 Web 远程控制暂时无法继续同步。',
+  'remote.failure.relay-unavailable': '外部 relay 连接不可用，请确认桌面端在线后重试。',
+  'remote.failure.unsupported-action': '当前是 Web 远程控制模式，只支持访问桌面端当前窗口已经打开的工作区。',
+  'remote.failure.unexpected-error': '无法启动移动端远程控制，请回到桌面端重试。',
   // ---- chat (native conversation) ----
   'chat.appBar': '任务会话',
   'chat.copy': '复制',
@@ -523,8 +558,7 @@ const _zh = {
   'auto.loading': '正在获取定时任务…',
   'auto.loadFailed': '加载失败: \$0',
   'auto.unavailable.title': '设备定时任务不可用',
-  'auto.unavailable.body':
-      '设备离线或协议握手未完成，可先用「本地定时发送」，设备恢复后再管理定时任务。',
+  'auto.unavailable.body': '设备离线或协议握手未完成，可先用「本地定时发送」，设备恢复后再管理定时任务。',
   'auto.opFailed': '操作失败: \$0',
   'auto.error.create': '创建失败，请重试',
   'auto.error.update': '保存失败，请重试',
@@ -610,8 +644,7 @@ const _zh = {
   'op.name': '任务标题',
   'op.name.hint': '例如：夜间重构',
   'op.prompt': '任务指令',
-  'op.prompt.hint':
-      '描述希望 ZCode 在后台完成的工作、预期结果和约束，例如整理本周代码改动并生成站会摘要…',
+  'op.prompt.hint': '描述希望 ZCode 在后台完成的工作、预期结果和约束，例如整理本周代码改动并生成站会摘要…',
   'op.model': '模型',
   'op.earliestAt': '最早可用时段',
   'op.earliest.any': '不限，排队后尽快',
@@ -624,14 +657,12 @@ const _zh = {
   'op.permissionWarning': '闲时执行时无人值守，需要确认的操作会暂停任务直到你响应。',
   'op.fullAccessHint': '建议权限切换为完全访问，以减少任务失败率',
   'op.tpl.ci.title': 'CI 失败与不稳定测试报告',
-  'op.tpl.ci.prompt':
-      '扫描最近的 CI 运行，列出失败和不稳定测试及其可能原因，并按影响范围给出修复建议。',
+  'op.tpl.ci.prompt': '扫描最近的 CI 运行，列出失败和不稳定测试及其可能原因，并按影响范围给出修复建议。',
   'op.tpl.docs.title': '文档同步检查',
   'op.tpl.docs.prompt':
       '基于当前代码实现和最近提交，检查仓库中的 README、docs、配置说明与使用示例是否过时或与实现不一致。仅修改能够从代码、配置或提交记录中直接确认的内容；不要猜测未验证的行为，并保持现有文档的结构、术语和写作风格。完成后列出修改的文件及每项修改依据；若无需修改，说明已检查的范围、证据与结论。',
   'op.tpl.standup.title': 'Git 站会摘要',
-  'op.tpl.standup.prompt':
-      '汇总本周 Git 活动，生成周五站会摘要：列出重要提交、已合并 PR 及主要变更，并保持简洁。',
+  'op.tpl.standup.prompt': '汇总本周 Git 活动，生成周五站会摘要：列出重要提交、已合并 PR 及主要变更，并保持简洁。',
   'op.created': '已提交闲时任务',
   'op.quota': '剩余额度 \$0',
   'op.earliest': '最早可用 \$0',
@@ -761,7 +792,8 @@ const _en = {
   'devices.add.paste': 'Paste link',
   'devices.add.pasteHint': 'Paste the remote-control URL',
   'devices.add.pasteTitle': 'Paste link',
-  'devices.add.pasteHint2': 'https://zcode.z.ai/remote/v4?sid=...&hash=...&t=...',
+  'devices.add.pasteHint2':
+      'https://zcode.z.ai/remote/v4?sid=...&hash=...&t=...',
   'devices.add.cancel': 'Cancel',
   'devices.add.confirm': 'Add',
   'devices.add.savedUnparsed': 'URL could not be parsed but was saved',
@@ -845,6 +877,53 @@ const _en = {
   'phase.error': 'Error',
   'phase.draft': 'Draft',
   'phase.paused': 'Paused',
+  'phase.idle': 'Idle',
+  // ---- task actions & tags (web taskList/task-item menu parity) ----
+  'tasks.awaiting': 'Awaiting confirmation',
+  'tasks.renamePlaceholder': 'Task name',
+  'tasks.action.pin': 'Pin',
+  'tasks.action.unpin': 'Unpin',
+  'tasks.action.rename': 'Rename',
+  'tasks.action.archive': 'Archive',
+  'tasks.action.unarchive': 'Unarchive',
+  'tasks.action.archiveView': 'View archive',
+  'tasks.action.unarchiveView': 'Exit archive view',
+  'tasks.action.markUnread': 'Mark as unread',
+  'tasks.action.markRead': 'Mark as read',
+  'tasks.action.delete': 'Delete',
+  'tasks.action.deleteTitle': 'Delete this task?',
+  'tasks.action.deleteDesc':
+      'Task "\$0" will be removed from the workspace. Existing records cannot be recovered.',
+  'tasks.workspaceKind.local': 'Local',
+  'tasks.workspaceKind.conversation': 'Conversation',
+  'tasks.workspaceKind.remote': 'Remote',
+  'common.cancel': 'Cancel',
+  'common.save': 'Save',
+  // ---- webRemoteControl failure states (official copy) ----
+  'remote.failure.session-not-found':
+      'This Web remote control link is no longer valid. Start it again from desktop.',
+  'remote.failure.session-expired':
+      'This Web remote control session has already ended. Generate a new link from desktop to continue.',
+  'remote.failure.session-conflict':
+      'This link is already being used by another page. Close the other page and scan again.',
+  'remote.failure.kicked':
+      'The relay kicked this pairing. Close the other page and generate a new QR code from desktop.',
+  'remote.failure.workspace-closed':
+      'The shared desktop window has been closed. Go back to desktop and start Web remote control again.',
+  'remote.failure.desktop-disconnected':
+      'The desktop side disconnected, so this Web remote control session can no longer continue.',
+  'remote.failure.invalid-mobile-connection':
+      'The current mobile connection is no longer valid. Reload the page and reconnect.',
+  'remote.failure.desktop-bootstrap-timeout':
+      'The desktop window did not respond in time. Make sure it is still running, then reload.',
+  'remote.failure.connection-recovery-timeout':
+      'The mobile connection did not recover in time, so Web remote control cannot keep syncing yet.',
+  'remote.failure.relay-unavailable':
+      'The external relay connection is unavailable. Make sure desktop is online, then try again.',
+  'remote.failure.unsupported-action':
+      'Web remote control mode can only open workspaces that are already open in the current desktop window.',
+  'remote.failure.unexpected-error':
+      'Could not start mobile remote control. Try again from desktop.',
   // ---- chat (native conversation) ----
   'chat.appBar': 'Task session',
   'chat.copy': 'Copy',
@@ -1026,7 +1105,8 @@ const _en = {
   'tasks.sidebar.archive': 'Archive',
   'tasks.archive.empty': 'No archived tasks',
   'remote.error.title': 'Cannot reach the desktop device',
-  'remote.error.hint': 'Make sure ZCode desktop is running and the network works',
+  'remote.error.hint':
+      'Make sure ZCode desktop is running and the network works',
   'remote.reload': 'Reload',
   'settings.title': 'Settings',
   'settings.appearance': 'Appearance',
@@ -1253,8 +1333,7 @@ const _en = {
   'op.viewResult': 'Open session',
   'op.cancel': 'Cancel task',
   'op.cancel.title': 'Cancel this idle-time task?',
-  'op.cancel.body':
-      '"\$0" will stop; files already modified are kept.',
+  'op.cancel.body': '"\$0" will stop; files already modified are kept.',
   'op.cancel.confirm': 'Cancel task',
   'op.deleteTitle': 'Delete this idle-time task?',
   'op.deleteBody':
@@ -1264,8 +1343,7 @@ const _en = {
   'op.section.history': 'History',
   'op.err.prompt': 'Instruction is required',
   'op.err.noWorkspace': 'No open workspace on this device',
-  'op.err.codingPlanOnly':
-      'Off-peak tasks require a Coding Plan subscription',
+  'op.err.codingPlanOnly': 'Off-peak tasks require a Coding Plan subscription',
   'op.err.quota': 'Monthly off-peak quota is used up',
   'op.err.unavailable': 'Off-peak service is temporarily unavailable',
   'op.err.other': 'Operation failed: \$0',
@@ -1307,7 +1385,8 @@ const _en = {
   'op.banner':
       'New feature for subscribers: Create "Idle-time task", We will complete your assigned task for free during periods of surplus computing power.',
   'op.edit': 'Edit Idle-time task',
-  'op.edit.hint': 'Update the instructions and how this task runs during idle time.',
+  'op.edit.hint':
+      'Update the instructions and how this task runs during idle time.',
   'op.edit.save': 'Save',
   'op.edit.menu': 'Edit',
   'op.peakWarning':

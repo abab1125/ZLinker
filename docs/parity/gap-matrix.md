@@ -1,0 +1,149 @@
+# ZLinker ↔ 网页远控版 差距矩阵(gap-matrix)
+
+> 对照 [`web-capabilities.md`](./web-capabilities.md) 与 ZLinker 现状(lib/ui、lib/protocol、lib/state,2026-08-30 盘点)。
+> 差距等级:**缺失**(ZLinker 无此能力)/ **部分**(有但不完整或协议形状有偏差)/ **一致**(已对齐,待验收标注)。
+> 优先级:**P0**(协议/状态流转逻辑,影响正确性)> **P1**(功能面补全)> **P2**(增强/大工程,可裁剪)。
+> 验收栏:`✅ 已验收(截图)` / `⚠️ 已知差异(原因)` / `❌ 未通过(回炉)` / 🔨 = 已实现待验收 / 空 = 未实现。
+
+## 批次①实现记录(2026-08-30,代码完成,ZLinker 侧截图已过 judge)
+
+- **G1/G2**:`app-error` 已接入(`remote_client._handleAppError` → `RemoteAppError` 流);11 种 reason + kicked 映射到会话失败态,session-conflict 视同 kicked(单页限制语义);失败文案采用网页版 `webRemoteControl.failure.*` 官方原文(zh/en),由 `_ConnectionBanner._failureBody` 渲染。
+- **G3**:`workspace-list-updated` 已被 device_session 消费(工作区+任务表实时刷新)。
+- **G4**:`sendViewState` 已在 chat 打开(带 taskId)/关闭(仅工作区)时上报;REST POST 双通道未做(⚠️ 已知差异:WS 是主通道,REST 为网页版冗余备份)。
+- **T1/T2**:任务命令方法名收敛为源码确认值;归档改为 `archiveTask`/`unarchiveTask` 双方法无布尔字段;新增 `deleteTask`、`listArchivedTasks`。
+- **T3/T4**:任务行长按菜单补全(置顶/重命名/归档/标记未读/删除),删除带官方确认弹窗文案。
+- **T5**:relay 任务总表(bootstrap + workspace-list-updated)进入渲染:非活跃工作区卡片、时间线分组(跨工作区)、置顶分组(跨工作区)全部合并源;活跃工作区的 sessions-index 数据按任务 id 覆盖(保留 phase/pendingInteraction 精度)。
+- **T6**:归档视图改用 relay 任务(`Dg.archived`),移动端新增「查看归档」菜单项。
+- **T7**:整理偏好持久化(`zlinker_task_organize_v1`,默认与网页版一致)。
+- **T9**:「等待确认」标签(sessions-index pendingInteraction);未读圆点+加粗(`unreadAt`)。
+- **T12**:工作区类型徽章 本地/对话/远程(`workspacePurpose`/`kind`)。
+- **行为修正(web parity)**:移动端工作区头部点击=仅展开/收起(网页版移动首页同款;切换工作区发生在打开任务时,bridge-open 携带 taskId);桌面侧栏保留点击切换;非活跃卡片的 ➕ 先开桥再起草稿。
+- 测试:240 全绿;截图管线增加桌面端 RepaintBoundary 回退 + 手机取景框(嵌套 Navigator,弹层入框)。
+- **ZLinker 侧验收**:12 张截图(`docs/screenshots/parity/task_list/zlinker-home-*.png`,zh/en × 默认/滚动展开/操作菜单/删除确认/归档/桌面窗口)全部 judge pass(第一轮 3 fail 已修复:showDialog 落根导航导致取景框外、EN 节标题截断、非活跃工作区折叠不可见)。
+- ⚠️ 已知差异:en 计数「1 tasks」单复数与网页版模板 `{count} tasks` 行为一致,保留。
+- 验收阻塞:网页版基准截图需要可用的远控 URL(sid/hash 会过期),等用户提供后做成对对比(含协议消息序列比对)。
+
+
+## 总览与建议执行顺序
+
+| 批次 | 范围 | 理由 |
+|---|---|---|
+| ① | 全局连接层(§G)+ task_list_page(§T) | 任务列表是手机端主入口;协议方法名已从源码确认,含一处现实现的形状错误(archive),逻辑收益最大 |
+| ② | chat_page(§C) | 面最大,拆两轮:先队列/交互/rewind 等 P0 逻辑,再 P2 增强 |
+| ③ | device_usage_page(§U)+ model_providers_page(§M) | 纯 RPC 页,改造成本低 |
+| ④ | settings_page(§S)+ 长尾(P2 裁剪项定夺) | 需要用户先定桌面设置的范围 |
+| 不动 | devices_page、qr_scan_page、usage_stats_page(本地)、scheduled_page 本地段、about_page、remote_page(WebView 兜底) | ZLinker 专属能力,网页版无对应物(见 §Z) |
+| 已对齐 | automations_page、off_peak_page | 前期完成,回归即可 |
+
+---
+
+## G. 全局连接层(协议,影响所有页面)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| G1 `app-error` 消息 | relay 下发 `{reason, error?}`,reason 枚举 11 种,前端映射为 12 种失败态文案 | `_dispatchPayload` 未处理 `app-error`(grep 0 命中) | 缺失 | **P0** | |
+| G2 失败态文案 | `webRemoteControl.failure.*` 12 态各自文案+动作(sessionNotFound→回桌面重开等) | relay 关闭码 4004/4009/4010/4011/4012/4013 有映射;kicked 有全覆盖遮罩;bootstrap-timeout/recovery-timeout/relay-unavailable/unsupported-action/unexpected-error 无 UI | 部分 | **P0** | |
+| G3 `workspace-list-updated` 推送 | relay 推送工作区/任务总表更新,任务首页据此实时刷新 | remote_client 转成 `workspaceListUpdated` 流,但**无任何消费者**;任务列表只靠手动 reloadTasks | 缺失(流已有,逻辑缺) | **P0** | |
+| G4 mobile-view-state 随导航更新 | 每次切换工作区/任务都发(WS)+ REST POST 双通道;桌面端显示「手机正在操作此任务」 | 仅 `openBridge` 时发一次;打开具体任务不更新 activeTaskId | 部分 | **P0** | |
+| G5 `unsupportedAction` 边界 | 只支持访问桌面端已打开的工作区;尝试打开未开工作区时明确报错文案 | 无对应处理(工作区列表来自 bootstrap,行为可能碰不到,但需要错误路径兜底) | 缺失 | P1 | |
+| G6 重连提示形态 | 顶部悬浮 toast「正在自动重连...」,成功自动消失 | `_GatewayBanner` 黄条(语义等价) | 一致 | P2 | |
+| G7 `mobile-diagnostic` 上报 | 连接状态迁移/断开/恢复等事件上报 relay 诊断 | 无上报 | 缺失 | P2(服务端观测,不影响功能) | |
+| G8 `bridge-degraded` 恢复 | rpc-transport-fault 等原因 → 降级标记+重试恢复循环 | 已实现(remote_client `_handleBridgeDegraded` + `_recoverBridgeWithRetry`) | 一致 | — | |
+| G9 重连后 bridge 恢复 | relay 静默重连→逐 bridge recover(reconnect-request 廉价路径→全量 reopen 带 recoveryId) | 已实现(remote_client `_recoverActiveBridges`) | 一致 | — | |
+
+## T. task_list_page(任务主页)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| T1 归档协议形状 | `archiveTask` / `unarchiveTask` 两个独立方法,参数不带布尔字段 | TaskCommandsPort 探测 `archiveTask` 却带 `{archived: bool}` 字段;候选里还有不存在的 `setTaskArchived` | 部分(**协议形状错误**) | **P0** | |
+| T2 任务操作方法名 | `renameTask / setTaskPinned / setTaskUnread / deleteTask`(带 `{taskId, workspacePath, workspaceIdentity?, title/pinned/unread}`) | rename/pin/unread 走探测(候选顺序冗余);**deleteTask 未实现**(任务行菜单无删除) | 部分 | **P0** | |
+| T3 任务行操作菜单 | pin/unpin、rename、delete、archive/unarchive、markAsUnread、resume | 长按菜单仅 停止/暂停/继续;置顶/重命名/归档/未读只在 chat「更多」菜单 | 部分 | **P0** | |
+| T4 删除确认弹窗 | `taskDeleteTitle/Description`(不可恢复警告) | 无删除入口故无弹窗 | 缺失 | **P0**(随 T2) | |
+| T5 实时任务变更 | `onDynamicWorkspaceEvent(workspace_task_list_changed)`(reason: task_created 等)+ relay workspace-list-updated | 无订阅;列表不实时 | 缺失 | **P0** | |
+| T6 归档视图数据源 | `listArchivedTasks` | `_showArchived` 过滤现有列表;归档任务是否出现在 sessions-index 未证实 | 部分(待核实后定) | **P0** | |
+| T7 整理偏好持久化 | localStorage `zcode-web-remote-control-mobile-task-home-preferences`,默认 `{organizeBy:'workspace', sortBy:'updated'}` | organize 面板仅 setState 内存态,重启丢失(默认值恰好一致) | 部分 | P1 | |
+| T8 状态标签 changeStats | `+{added} -{removed}` 文件变更统计标签 | 无 | 缺失 | P1 | |
+| T9 状态标签 等待确认 | `permissionTag/userInputTag="等待确认"`(任务卡上) | 无 | 缺失 | P1 | |
+| T10 特殊任务标记 | `cronTaskLabel`(定时任务)/`offPeakTaskLabel`(闲时任务) | 无 | 缺失 | P1 | |
+| T11 时间线分组粒度 | today/yesterday/daysAgo/thisWeek/lastWeek/thisMonth/older | 今天/N天前/上周/更早 | 部分(可接受) | P2 | |
+| T12 工作区类型标签 | `workspaceKind.local/conversation/remote` | 无(仅路径) | 缺失 | P2 | |
+| T13 任务搜索 | taskSearch 面板(标题+内容)+ commandCenter | 无 | 缺失 | P2 | |
+| T14 任务分组(颜色分组) | taskGroup CRUD + 拖拽 | 无(桌面功能,移动端 web 也弱化) | 缺失 | P2(倾向不做,标⚠️) | |
+| T15 新建任务多 Agent | claude/opencode/gemini/codex CLI 选择 + Codex 连通性检测 | 单一 ZCode 会话创建 | 缺失 | P2(手机场景存疑,待用户定) | |
+| T16 置顶分区/当前任务高亮 | pinnedSection + 当前任务白色高亮 | 已有(已置顶分组卡 + 白色高亮) | 一致 | — | |
+| T17 下拉刷新/收起全部/刷新按钮 | refresh + collapseAll | 已有 | 一致 | — | |
+| T18 空态/加载态文案 | noTasks/loading/syncingRemoteWorkspaces/每工作区空态 | 已有对应文案 | 一致 | — | |
+| T19 汇总行 | 「{workspaceCount} 个工作区 · {taskCount} 个任务」 | 已有同款汇总行 | 一致 | — | |
+
+## C. chat_page(会话页)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| C1 队列排序 | `reorderQueueItem {queueItemId, beforeQueueItemId\|null}`(可拖拽) | 队列条有 sendNow/edit/delete/autoDrain,**无 reorder**(信封命令也缺) | 缺失 | **P0** | |
+| C2 交互自动继续 | `snoozeInteractionAutoResolution {interactionId}`(对应桌面「提问自动继续」5 分钟) | 无 | 缺失 | **P0** | |
+| C3 followup 语义 | `setFollowupMode {mode:'queue'|'guide'}` + sendText `requestedDelivery:'startNow'|'queue'|'guide'` | 有 inputRouting=choice 时「清空/保留队列」弹窗 + heldQueueDisposition/expectedHeldQueueItemIds 已传;`setFollowupMode`/`requestedDelivery` 未用 | 部分 | **P0** | |
+| C4 后台工作取消 | `cancelBackgroundWork {workId}` | 后台横幅有展示,无取消 | 部分 | P1 | |
+| C5 deleteSession | 信封命令 `deleteSession {}` | 无 | 缺失 | P1 | |
+| C6 renameSession | 信封命令 `renameSession {title}` | 走 TaskCommandsPort.renameTask 探测(zcode-task 通道;信封命令是另一条路径) | 部分(功能有,通道不同,需验证桌面两侧都支持) | P1 | |
+| C7 rewind 预览 | `conversationFileRewindPreviewV4` 预检流程 UI(safe/unsafe/ignored + 不可撤销原因) | 协议层已定义(conversation.dart:476),UI 只有确认对话框无预览 | 部分 | **P0** | |
+| C8 elicitation 自由表单 | MCP OAuth 等表单(customAnswer/submit/倒计时) | questions 表单(单选/多选/自由文本)已有;elicitation 专属形态待核 | 部分(先验收再定) | P1 | |
+| C9 额度警告横幅 | `chat.quota.*`(quota_exhausted/providerLimited 等 + upgrade/switchModel 动作) | 无 | 缺失 | P1 | |
+| C10 planUsage 面板 | `chat.planUsage.*`(5 小时池/每周额度/会话上下文) | 「用量 sheet」有(调 getTaskTokenUsage 类?),quota 维度待核 | 部分(待核) | P1 | |
+| C11 contextUsage 详情 | 容量+缓存命中率+来源分解+compress | 上下文圆环有;分解无;compress 走 /compact 快捷已通 | 部分 | P2 | |
+| C12 Hook 评审 | requestWorkspaceHookReview/respondWorkspaceHookReview/toggleReviewItem/revokeTrust + 待审横幅 | 无 | 缺失 | P2(桌面安全流,远控低频) | |
+| C13 @提及上下文 | files/skills/subagents/sessions 分类选择器 | 无(仅附件+技能选择器) | 缺失 | P2 | |
+| C14 # 插入会话 / 消息引用 selections / 回合导航器 | 引用消息到对话,限额 8000 字符/8 条 | 无 | 缺失 | P2 | |
+| C15 CUA 电脑操作 | 30+ 动作 + 权限面板(macOS 权限引导) | 无 | 缺失 | P2(倾向不做,标⚠️) | |
+| C16 提示词增强/建议草稿 | promptEnhance + suggestedPrompt | 无 | 缺失 | P2 | |
+| C17 编辑重发 workspaceMode | `editUserQuery {workspaceMode:'preserve'|'rewind'}` + 重置文件弹窗 | 编辑重发有;workspaceMode 参数与「对话+文件重置」弹窗待核 | 部分(待核) | P1 | |
+| C18 错误呈现 | chat.error.*(connectionLost/processExited/复制 TraceID/反馈带现场) | 订阅失败红条/重连黄条/被接管遮罩有;TraceID 复制/反馈带现场无 | 部分 | P1 | |
+| C19 思考等级档位 | 9 档 off/noThink/on/low/medium/high/xhigh/max | 思考等级 chip 有(档位集合待核对) | 部分(待核) | P1 | |
+| C20 消息流核心 | turn 分组/加载更早/时间分隔/Markdown/工具卡/Diff/反馈/复制 | 已有(前轮对齐成果) | 一致 | — | |
+| C21 权限交互核心 | resolveInteraction optionId/freeText/action | 已有(allowOnce/allowAlways/deny/custom 本地化) | 一致 | — | |
+| C22 Goal/compact/模型切换 | goalBanner/pause/resume、/compact、switchModelConfig/switchCollaborationMode | 已有 | 一致 | — | |
+| C23 附件上传 | begin/chunk/commit 384KB+sha256、状态机、上限文案 | 已有;失败重试/超限文案待核 | 一致/部分 | — | |
+
+## U. device_usage_page(套餐用量)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| U1 应用用量图 | `getAppUsageSnapshot({range:'7d'|'30d'|'90d'|'all', timeZone})` → dailyModelUsage 趋势图+模型分布 | 无(只调 entitlement) | 缺失 | **P0**(本页核心缺口) | |
+| U2 套餐用量图 | codingPlan 用量(指标 credits/usage、主体 model/tool、range today/7d/30d/custom、工具调用分布) | 无 | 缺失 | P1 | |
+| U3 权益面板字段 | 有效套餐/等级/到期/下次重置/5 小时池/每周剩余/工具调用/ZCode MCP/并发优先级 | 套餐名/等级/剩余额度/quota.limits/订阅详情已有;5 小时池/每周/MCP/并发优先级字段待核 | 部分 | P1 | |
+| U4 错误态文案 | `usage.error.*`(未找到权益/无法读取额度/无法读取统计+重试) | 加载/错误/刷新已有;文案分域未对齐 | 部分 | P2 | |
+| U5 迷你额度(侧栏概念) | sidebar.usage.plan.* 8 态 + 刷新 | 无侧栏;可作为页头摘要卡 | 缺失 | P2 | |
+
+## M. model_providers_page(模型供应商)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| M1 注册表实时刷新 | `onDidChangeProviderRegistry` 事件 → `{snapshot:{revision}}` | 无(仅下拉刷新) | 缺失 | **P0** | |
+| M2 端点建议 | `getEndpointSuggestions()` → suggestions;`getModelsByEndpoint(endpoint)` → models | 添加表单手输 baseURL/模型列表 | 缺失 | P1 | |
+| M3 预置供应商刷新 | `refreshPresetProviders()` | 无 | 缺失 | P1 | |
+| M4 save/delete 形状 | `save(provider)` / `delete(...)` | 已有(delete 失败换形状重试一次) | 一致/部分(待验收) | — | |
+| M5 codingPlan 套餐购买 | 完整购买流(8 态+支付轮询) | 无 | 缺失 | P2(大工程,倾向不做,标⚠️) | |
+| M6 模型详情/排序 | 上下文窗口/模态/拖拽排序/claudeMapping | 无 | 缺失 | P2 | |
+
+## S. settings_page(设置)
+
+| 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
+|---|---|---|---|---|---|
+| S1 桌面设置读写面 | setting channel `get()/update()`;远控可及项:交互行为 zcodeInteractionBehavior、taskAutoArchive、显示思考过程、任务通知等 | ZLinker 设置页仅本机偏好(主题/语言/原生列表/通知),不触达桌面设置 | 缺失(范围待定夺) | **P1(范围待用户定)** | |
+| S2 本机偏好 | —(无对应) | 主题/语言/通知开关 | 一致(自有能力) | — | |
+| S3 检查更新 | 桌面更新流 | 商店/GitHub 双渠道(自有能力) | 一致(自有能力) | — | |
+
+## Z. ZLinker 专属(网页版无对应,不参与对齐)
+
+devices_page(多设备管理/剪贴板检测/排序置顶)、qr_scan_page(扫码/相册解码)、usage_stats_page(本机使用统计)、scheduled_page 本地定时消息段、about_page、remote_page(WebView 兜底+深链注入)。这些保留现状,不做对齐验收。
+
+## 附:协议缺口清单(实现时逐条消化)
+
+1. `app-error` 接入 `remote_client._dispatchPayload` → 失败态枚举(含 close code 复用现有映射)。
+2. `zcode-task`:`archiveTask`/`unarchiveTask` 形状修正;`deleteTask`、`listArchivedTasks` 接入;TaskCommandsPort 候选表收敛为已确认方法名。
+3. `zcode-task.onDynamicWorkspaceEvent` 订阅(workspace_task_list_changed)+ `workspaceListUpdated` 流接入 device_session → 任务列表实时刷新。
+4. envelope 命令补齐:`reorderQueueItem`、`snoozeInteractionAutoResolution`、`setFollowupMode`、`cancelBackgroundWork`、`deleteSession`、`renameSession`(双通道验证);`sendText.requestedDelivery`。
+5. `sendMobileViewState` 在任务/工作区切换时调用(activeTaskId)。
+6. `usage-stats.getAppUsageSnapshot`(range/timeZone)。
+7. `model-provider.onDidChangeProviderRegistry` / `getEndpointSuggestions` / `getModelsByEndpoint` / `refreshPresetProviders`。
+8. `conversationFileRewindPreviewV4` 接 UI。
+9. setting channel `get/update`(范围待定)。

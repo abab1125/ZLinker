@@ -152,11 +152,18 @@ abstract interface class ChatGateway implements Listenable {
   String? get error;
 
   /// Task metadata commands (rename/pin/archive/unread). Method names are
-  /// NOT live-confirmed — see [TaskCommandsPort].
+  /// source-confirmed — see [TaskCommandsPort].
   Future<dynamic> renameTask(String sessionId, String title);
   Future<dynamic> setTaskPinned(String sessionId, bool pinned);
   Future<dynamic> setTaskArchived(String sessionId, bool archived);
   Future<dynamic> setTaskUnread(String sessionId, bool unread);
+
+  /// Deletes a task (`zcode-task.deleteTask`). Callers confirm first.
+  Future<dynamic> deleteTask(String sessionId);
+
+  /// mobile-view-state-update: report the task the chat UI is showing
+  /// (or just the workspace when [taskId] is null).
+  void sendViewState({String? taskId});
 
   /// `workspaceId` for draft-mode createSession, plus the workspace path
   /// for the chat page's copy action.
@@ -187,8 +194,11 @@ abstract interface class ChatGateway implements Listenable {
     String? heldQueueDisposition,
   });
 
-  Future<dynamic> sendGoalCommand(String sessionId, String text,
-      {String? heldQueueDisposition});
+  Future<dynamic> sendGoalCommand(
+    String sessionId,
+    String text, {
+    String? heldQueueDisposition,
+  });
 
   Future<dynamic> stop(String sessionId);
   Future<dynamic> compact(String sessionId);
@@ -205,7 +215,10 @@ abstract interface class ChatGateway implements Listenable {
   Future<dynamic> switchCollaborationMode(String sessionId, String mode);
   Future<dynamic> setFollowupMode(String sessionId, String mode);
   Future<dynamic> setAssistantFeedback(
-      String sessionId, Map<String, dynamic> target, String? feedback);
+    String sessionId,
+    Map<String, dynamic> target,
+    String? feedback,
+  );
   Future<dynamic> resolveInteraction(
     String sessionId,
     String interactionId, {
@@ -215,8 +228,7 @@ abstract interface class ChatGateway implements Listenable {
     Map<String, dynamic>? content,
   });
 
-  Future<dynamic> rowsRange(String sessionId,
-      {int? beforeRowId, int limit});
+  Future<dynamic> rowsRange(String sessionId, {int? beforeRowId, int limit});
 
   Future<Map<String, dynamic>> attachmentPut(
     String sessionId, {
@@ -227,23 +239,34 @@ abstract interface class ChatGateway implements Listenable {
   });
 
   Future<({Uint8List bytes, String? mediaType})> attachmentRead(
-      String sessionId,
-      {required String ref});
+    String sessionId, {
+    required String ref,
+  });
 
   Future<dynamic> sendQueuedNow(String sessionId, String queueItemId);
   Future<dynamic> editQueueItem(
-      String sessionId, String queueItemId, String newText);
+    String sessionId,
+    String queueItemId,
+    String newText,
+  );
   Future<dynamic> deleteQueueItem(String sessionId, String queueItemId);
   Future<dynamic> setAutoDrain(String sessionId, bool autoDrain);
   Future<dynamic> plans(String sessionId);
-  Future<dynamic> fileChanges(String sessionId,
-      {required Map<String, dynamic> target});
+  Future<dynamic> fileChanges(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  });
   Future<dynamic> retryTurn(String sessionId, Map<String, dynamic> target);
   Future<dynamic> forkAssistant(String sessionId, Map<String, dynamic> target);
   Future<dynamic> editUserQuery(
-      String sessionId, Map<String, dynamic> target, String newText);
+    String sessionId,
+    Map<String, dynamic> target,
+    String newText,
+  );
   Future<dynamic> applyFileRewind(
-      String sessionId, Map<String, dynamic> target);
+    String sessionId,
+    Map<String, dynamic> target,
+  );
 }
 
 /// One native protocol connection to one device. Owns the full stack
@@ -293,6 +316,8 @@ class DeviceSession extends ChangeNotifier
   SessionsIndexSubscription? _sessionsSub;
   final Map<String, ConversationSubscription> _chatSubs = {};
   StreamSubscription? _failureSub;
+  StreamSubscription? _wsListSub;
+  StreamSubscription? _appErrSub;
   Timer? _retryTimer;
   Timer? _listWatchdog;
   int _retryAttempts = 0;
@@ -321,12 +346,29 @@ class DeviceSession extends ChangeNotifier
   List<Map<String, dynamic>> _workspaces = [];
   Map<String, dynamic>? _activeWorkspace;
 
+  /// Relay-level task list (`Dg` model from bootstrap /
+  /// workspace-list-updated): every workspace's tasks with
+  /// displayStatus/pinned/archived/unreadAt. The web mobile home renders
+  /// non-active workspaces (and the archive view) from exactly this list.
+  List<Map<String, dynamic>> _relayTasks = [];
+
+  /// Well-known `app-error` reason of the last fatal failure (mirrors the
+  /// web's `webRemoteControl.failure.*` enum); UI maps it to localized copy.
+  String? _failureReason;
+
   @override
   DeviceStatus get status => _status;
   @override
   bool get kicked => _kicked;
   @override
   String? get error => _error;
+
+  /// Reason code (`session-not-found`, `session-conflict`,
+  /// `unsupported-action`, ...) of the current failure, if any.
+  String? get failureReason => _failureReason;
+
+  /// Relay task list (raw `Dg` maps).
+  List<Map<String, dynamic>> get relayTasks => _relayTasks;
 
   /// True while a workspace bridge + sessions-index open is in flight.
   bool get openingWorkspace => _openingWorkspace;
@@ -346,7 +388,8 @@ class DeviceSession extends ChangeNotifier
   BridgeSession? get bridge => _bridge;
 
   /// Sessions with phase running/prewarming — the card badge count.
-  int get runningTaskCount => sessions?.list
+  int get runningTaskCount =>
+      sessions?.list
           .where((e) => e.phase == 'running' || e.phase == 'prewarming')
           .length ??
       0;
@@ -362,10 +405,12 @@ class DeviceSession extends ChangeNotifier
     _listWatchdog?.cancel();
     _kicked = false;
     _error = null;
+    _failureReason = null;
     _setStatus(DeviceStatus.connecting);
     final sw = Stopwatch()..start();
-    final client =
-        clientFactory != null ? clientFactory!() : RemoteClient(params, onLog: _log);
+    final client = clientFactory != null
+        ? clientFactory!()
+        : RemoteClient(params, onLog: _log);
     _failureSub = client.relay.failures.listen(_onRelayFailure);
     try {
       // socket.ready has no internal timeout: a black-holed dial would park
@@ -380,6 +425,8 @@ class DeviceSession extends ChangeNotifier
       }
       _client = client;
       client.relay.stateListenable.addListener(_onRelayState);
+      _wsListSub = client.workspaceListUpdated.listen(_onWorkspaceListUpdated);
+      _appErrSub = client.appErrors.listen(_onAppError);
       _onRelayState();
       sw.reset();
       final bootstrap = await client.bootstrap();
@@ -389,6 +436,12 @@ class DeviceSession extends ChangeNotifier
         if (list is List)
           for (final w in list)
             if (w is Map) w.cast<String, dynamic>(),
+      ];
+      final tasks = bootstrap['tasks'];
+      _relayTasks = [
+        if (tasks is List)
+          for (final t in tasks)
+            if (t is Map) t.cast<String, dynamic>(),
       ];
       _retryAttempts = 0;
       // Auto-open a workspace so the native list works immediately: the
@@ -405,14 +458,20 @@ class DeviceSession extends ChangeNotifier
     } catch (e) {
       await _failureSub?.cancel();
       _failureSub = null;
+      await _wsListSub?.cancel();
+      _wsListSub = null;
+      await _appErrSub?.cancel();
+      _appErrSub = null;
       if (_disposed) {
         await client.dispose();
         return;
       }
       await client.dispose();
       _error = '$e';
-      _log('[session] connect failed after '
-          '${sw.elapsedMilliseconds}ms: $e');
+      _log(
+        '[session] connect failed after '
+        '${sw.elapsedMilliseconds}ms: $e',
+      );
       _setStatus(DeviceStatus.error);
       _maybeScheduleRetry();
     } finally {
@@ -426,7 +485,8 @@ class DeviceSession extends ChangeNotifier
   void _maybeScheduleRetry() {
     if (_disposed || _kicked) return;
     final msg = _error ?? '';
-    final retryable = msg.contains('relay-unavailable') ||
+    final retryable =
+        msg.contains('relay-unavailable') ||
         msg.contains('desktop-disconnected') ||
         msg.contains('TimeoutException');
     if (!retryable || _retryAttempts >= 3) return;
@@ -440,10 +500,68 @@ class DeviceSession extends ChangeNotifier
   void _onRelayFailure(RelayFailure failure) {
     if (_disposed) return;
     _error = '$failure';
+    _failureReason ??= failure.reason;
     _kicked = _kicked || failure.reason == 'kicked';
     if (_kicked) {
       // Another terminal took over; stay quiet until the user acts.
       _retryTimer?.cancel();
+    }
+    notifyListeners();
+  }
+
+  /// Relay push (`workspace-list-updated {result:{workspaces, tasks?, ...}}`):
+  /// the live workspace+task overview the web mobile home renders from.
+  /// Workspaces merge here; task rows are re-rendered by listeners.
+  void _onWorkspaceListUpdated(dynamic result) {
+    if (_disposed || result is! Map) return;
+    final list = result['workspaces'];
+    if (list is List) {
+      _workspaces = [
+        for (final w in list)
+          if (w is Map) w.cast<String, dynamic>(),
+      ];
+    }
+    final tasks = result['tasks'];
+    if (tasks is List) {
+      _relayTasks = [
+        for (final t in tasks)
+          if (t is Map) t.cast<String, dynamic>(),
+      ];
+    }
+    notifyListeners();
+  }
+
+  /// `app-error` reason → session failure state. session-conflict means the
+  /// single mobile slot was taken by another page (web `singlePageNote`
+  /// semantics): treated like a kick — no auto-reconnect until the user acts.
+  void _onAppError(RemoteAppError e) {
+    if (_disposed || _kicked) return;
+    _log('[session] app-error ${e.reason}');
+    switch (e.reason) {
+      case 'session-conflict':
+      case 'kicked':
+        _kicked = true;
+        _failureReason = e.reason;
+        _error = e.message;
+        _retryTimer?.cancel();
+        _setStatus(DeviceStatus.error);
+      case 'relay-unavailable':
+      case 'desktop-disconnected':
+      case 'session-expired':
+      case 'workspace-closed':
+      case 'session-not-found':
+      case 'invalid-mobile-connection':
+      case 'desktop-bootstrap-timeout':
+      case 'connection-recovery-timeout':
+      case 'unsupported-action':
+      case 'unexpected-error':
+        _failureReason = e.reason;
+        _error = e.message;
+        _setStatus(DeviceStatus.error);
+      default:
+        _failureReason = e.reason;
+        _error = e.message;
+        _setStatus(DeviceStatus.error);
     }
     notifyListeners();
   }
@@ -500,7 +618,9 @@ class DeviceSession extends ChangeNotifier
   /// Concurrent calls are serialized (last wins) instead of dropped: an
   /// open already in flight used to swallow overlapping retries silently,
   /// which read exactly like the dead "retry" button of the loading bug.
-  Future<void> openWorkspace(Map<String, dynamic> workspace) {
+  /// [taskId] rides the `workspace-bridge-open` payload (web parity: tapping
+  /// a task of a non-active workspace opens the bridge straight onto it).
+  Future<void> openWorkspace(Map<String, dynamic> workspace, {String? taskId}) {
     final previous = _openChain;
     final completer = Completer<void>();
     _openChain = completer;
@@ -512,7 +632,7 @@ class DeviceSession extends ChangeNotifier
           } catch (_) {}
         }
         if (_disposed) return;
-        await _openWorkspaceNow(workspace);
+        await _openWorkspaceNow(workspace, taskId: taskId);
       } finally {
         if (identical(_openChain, completer)) _openChain = null;
         completer.complete();
@@ -523,7 +643,10 @@ class DeviceSession extends ChangeNotifier
 
   Completer<void>? _openChain;
 
-  Future<void> _openWorkspaceNow(Map<String, dynamic> workspace) async {
+  Future<void> _openWorkspaceNow(
+    Map<String, dynamic> workspace, {
+    String? taskId,
+  }) async {
     final key = workspaceKeyOf(workspace);
     final client = _client;
     if (key == null || client == null || _disposed || _openingWorkspace) {
@@ -533,7 +656,7 @@ class DeviceSession extends ChangeNotifier
     final sw = Stopwatch()..start();
     _listWatchdog?.cancel();
     try {
-      final bridge = await client.openBridge(key);
+      final bridge = await client.openBridge(key, taskId: taskId);
       if (_disposed || _client != client) {
         bridge.dispose();
         return;
@@ -611,8 +734,10 @@ class DeviceSession extends ChangeNotifier
       // Desktop reports no workspaces: an empty list IS the ready state.
       return;
     }
-    _log('[session] list not ready; watchdog armed '
-        '(${timings.listReadyTimeout.inSeconds}s)');
+    _log(
+      '[session] list not ready; watchdog armed '
+      '(${timings.listReadyTimeout.inSeconds}s)',
+    );
     _listWatchdog = Timer(timings.listReadyTimeout, _onListNotReady);
   }
 
@@ -627,13 +752,16 @@ class DeviceSession extends ChangeNotifier
     if (_listEscalations == 1) {
       // Soft escalation: a fresh bridge + subscribe usually recovers a
       // snapshot lost between the subscribe ack and its delivery.
-      _log('[session] sessions-index never became ready; reopening '
-          'workspace (soft)');
+      _log(
+        '[session] sessions-index never became ready; reopening '
+        'workspace (soft)',
+      );
       unawaited(_reopenForWatchdog(target));
       return;
     }
-    final scheduled =
-        _forceRebuildAfterStall('sessions-index still not ready after reopen');
+    final scheduled = _forceRebuildAfterStall(
+      'sessions-index still not ready after reopen',
+    );
     if (!scheduled && !_disposed && !_kicked) {
       // Rebuild was debounced (one just ran); keep guarding until its
       // outcome lands instead of going silent forever.
@@ -657,7 +785,9 @@ class DeviceSession extends ChangeNotifier
   bool _forceRebuildAfterStall(String reason) {
     if (_disposed || _kicked || _rebuilding) return false;
     final now = clock.now();
-    if (now.difference(_lastStallRebuildAt) < timings.minRebuildInterval) return false;
+    if (now.difference(_lastStallRebuildAt) < timings.minRebuildInterval) {
+      return false;
+    }
     _lastStallRebuildAt = now;
     _rebuilding = true;
     _log('[session] link stalled ($reason); rebuilding connection');
@@ -688,6 +818,12 @@ class DeviceSession extends ChangeNotifier
         if (list is List)
           for (final w in list)
             if (w is Map) w.cast<String, dynamic>(),
+      ];
+      final tasks = bootstrap['tasks'];
+      _relayTasks = [
+        if (tasks is List)
+          for (final t in tasks)
+            if (t is Map) t.cast<String, dynamic>(),
       ];
     } catch (e) {
       _log('[session] reload bootstrap failed: $e');
@@ -735,15 +871,19 @@ class DeviceSession extends ChangeNotifier
   /// Both waits are bounded, and each timeout marks the link as stalled:
   /// the session forces one full suspend+connect rebuild so subsequent
   /// calls ride a fresh bridge instead of queueing on the wedged one.
-  Future<dynamic> callChannel(String channel, String method,
-      [List<Object?> args = const []]) async {
+  Future<dynamic> callChannel(
+    String channel,
+    String method, [
+    List<Object?> args = const [],
+  ]) async {
     final gate = _testGate ?? _liveGate();
     if (gate == null) throw StateError('not connected');
     try {
       await gate.waitHealthy(timeout: timings.healthyWaitTimeout);
     } on TimeoutException {
       _forceRebuildAfterStall(
-          'workspace bridge unhealthy > ${timings.healthyWaitTimeout.inSeconds}s');
+        'workspace bridge unhealthy > ${timings.healthyWaitTimeout.inSeconds}s',
+      );
       rethrow;
     }
     try {
@@ -791,6 +931,19 @@ class DeviceSession extends ChangeNotifier
   @override
   Map<String, dynamic> get automationScope => offPeakScope;
 
+  /// mobile-view-state-update for the ACTIVE workspace (web parity: the
+  /// phone reports which workspace/task it is looking at; the desktop shows
+  /// the「手机正在操作此任务」badge from it). Fire-and-forget; safe to call
+  /// on every navigation.
+  @override
+  void sendViewState({String? taskId}) {
+    final ws = _activeWorkspace;
+    final client = _client;
+    final key = ws == null ? null : workspaceKeyOf(ws);
+    if (client == null || key == null) return;
+    unawaited(client.sendMobileViewState(workspaceKey: key, taskId: taskId));
+  }
+
   /// Minimal automation primitive: creates a new task (session) on the
   /// active workspace with [text] as the first message. Returns the new
   /// sessionId.
@@ -827,8 +980,8 @@ class DeviceSession extends ChangeNotifier
   @override
   String? get remoteUrl => params.source.toString();
 
-  /// Task metadata commands on the zcode-task channel (method names not
-  /// live-confirmed, probed per operation — see [TaskCommandsPort]).
+  /// Task metadata commands on the zcode-task channel (method names
+  /// source-confirmed; probe kept as a safety net — see [TaskCommandsPort]).
   late final TaskCommandsPort taskCommands = TaskCommandsPort(
     (method, args) => callChannel('zcode-task', method, args),
     scope: () => offPeakScope,
@@ -849,6 +1002,10 @@ class DeviceSession extends ChangeNotifier
   @override
   Future<dynamic> setTaskUnread(String sessionId, bool unread) =>
       taskCommands.setUnread(sessionId, unread);
+
+  @override
+  Future<dynamic> deleteTask(String sessionId) =>
+      taskCommands.delete(sessionId);
 
   /// Full reconnect after a KICK: drop everything and dial again.
   @override
@@ -903,13 +1060,12 @@ class DeviceSession extends ChangeNotifier
     String? firstText,
     List<Map<String, dynamic>>? attachments,
     Map<String, dynamic>? config,
-  }) =>
-      _requireConversation.createSession(
-        workspaceId,
-        firstText: firstText,
-        attachments: attachments,
-        config: config,
-      );
+  }) => _requireConversation.createSession(
+    workspaceId,
+    firstText: firstText,
+    attachments: attachments,
+    config: config,
+  );
 
   @override
   Future<dynamic> sendText(
@@ -917,22 +1073,23 @@ class DeviceSession extends ChangeNotifier
     String text, {
     List<Map<String, dynamic>>? attachments,
     String? heldQueueDisposition,
-  }) =>
-      _requireConversation.sendText(
-        sessionId,
-        text,
-        attachments: attachments,
-        heldQueueDisposition: heldQueueDisposition,
-      );
+  }) => _requireConversation.sendText(
+    sessionId,
+    text,
+    attachments: attachments,
+    heldQueueDisposition: heldQueueDisposition,
+  );
 
   @override
-  Future<dynamic> sendGoalCommand(String sessionId, String text,
-          {String? heldQueueDisposition}) =>
-      _requireConversation.sendGoalCommand(
-        sessionId,
-        text,
-        heldQueueDisposition: heldQueueDisposition,
-      );
+  Future<dynamic> sendGoalCommand(
+    String sessionId,
+    String text, {
+    String? heldQueueDisposition,
+  }) => _requireConversation.sendGoalCommand(
+    sessionId,
+    text,
+    heldQueueDisposition: heldQueueDisposition,
+  );
 
   @override
   Future<dynamic> stop(String sessionId) =>
@@ -956,13 +1113,12 @@ class DeviceSession extends ChangeNotifier
     required String provider,
     required String model,
     required String thought,
-  }) =>
-      _requireConversation.switchModelConfig(
-        sessionId,
-        provider: provider,
-        model: model,
-        thought: thought,
-      );
+  }) => _requireConversation.switchModelConfig(
+    sessionId,
+    provider: provider,
+    model: model,
+    thought: thought,
+  );
 
   @override
   Future<dynamic> switchCollaborationMode(String sessionId, String mode) =>
@@ -974,8 +1130,10 @@ class DeviceSession extends ChangeNotifier
 
   @override
   Future<dynamic> setAssistantFeedback(
-          String sessionId, Map<String, dynamic> target, String? feedback) =>
-      _requireConversation.setAssistantFeedback(sessionId, target, feedback);
+    String sessionId,
+    Map<String, dynamic> target,
+    String? feedback,
+  ) => _requireConversation.setAssistantFeedback(sessionId, target, feedback);
 
   @override
   Future<dynamic> resolveInteraction(
@@ -985,24 +1143,25 @@ class DeviceSession extends ChangeNotifier
     String? freeText,
     String? action,
     Map<String, dynamic>? content,
-  }) =>
-      _requireConversation.resolveInteraction(
-        sessionId,
-        interactionId,
-        optionId: optionId,
-        freeText: freeText,
-        action: action,
-        content: content,
-      );
+  }) => _requireConversation.resolveInteraction(
+    sessionId,
+    interactionId,
+    optionId: optionId,
+    freeText: freeText,
+    action: action,
+    content: content,
+  );
 
   @override
-  Future<dynamic> rowsRange(String sessionId,
-          {int? beforeRowId, int limit = 60}) =>
-      _requireConversation.rowsRange(
-        sessionId,
-        beforeRowId: beforeRowId,
-        limit: limit,
-      );
+  Future<dynamic> rowsRange(
+    String sessionId, {
+    int? beforeRowId,
+    int limit = 60,
+  }) => _requireConversation.rowsRange(
+    sessionId,
+    beforeRowId: beforeRowId,
+    limit: limit,
+  );
 
   @override
   Future<Map<String, dynamic>> attachmentPut(
@@ -1011,20 +1170,19 @@ class DeviceSession extends ChangeNotifier
     required String mime,
     required Uint8List bytes,
     void Function(double progress)? onProgress,
-  }) =>
-      _requireConversation.attachmentPut(
-        sessionId,
-        fileName: fileName,
-        mime: mime,
-        bytes: bytes,
-        onProgress: onProgress,
-      );
+  }) => _requireConversation.attachmentPut(
+    sessionId,
+    fileName: fileName,
+    mime: mime,
+    bytes: bytes,
+    onProgress: onProgress,
+  );
 
   @override
   Future<({Uint8List bytes, String? mediaType})> attachmentRead(
-          String sessionId,
-          {required String ref}) =>
-      _requireConversation.attachmentRead(sessionId, ref: ref);
+    String sessionId, {
+    required String ref,
+  }) => _requireConversation.attachmentRead(sessionId, ref: ref);
 
   @override
   Future<dynamic> sendQueuedNow(String sessionId, String queueItemId) =>
@@ -1032,8 +1190,10 @@ class DeviceSession extends ChangeNotifier
 
   @override
   Future<dynamic> editQueueItem(
-          String sessionId, String queueItemId, String newText) =>
-      _requireConversation.editQueueItem(sessionId, queueItemId, newText);
+    String sessionId,
+    String queueItemId,
+    String newText,
+  ) => _requireConversation.editQueueItem(sessionId, queueItemId, newText);
 
   @override
   Future<dynamic> deleteQueueItem(String sessionId, String queueItemId) =>
@@ -1048,9 +1208,10 @@ class DeviceSession extends ChangeNotifier
       _requireConversation.plans(sessionId);
 
   @override
-  Future<dynamic> fileChanges(String sessionId,
-          {required Map<String, dynamic> target}) =>
-      _requireConversation.fileChanges(sessionId, target: target);
+  Future<dynamic> fileChanges(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  }) => _requireConversation.fileChanges(sessionId, target: target);
 
   @override
   Future<dynamic> retryTurn(String sessionId, Map<String, dynamic> target) =>
@@ -1058,18 +1219,22 @@ class DeviceSession extends ChangeNotifier
 
   @override
   Future<dynamic> forkAssistant(
-          String sessionId, Map<String, dynamic> target) =>
-      _requireConversation.forkAssistant(sessionId, target);
+    String sessionId,
+    Map<String, dynamic> target,
+  ) => _requireConversation.forkAssistant(sessionId, target);
 
   @override
   Future<dynamic> editUserQuery(
-          String sessionId, Map<String, dynamic> target, String newText) =>
-      _requireConversation.editUserQuery(sessionId, target, newText);
+    String sessionId,
+    Map<String, dynamic> target,
+    String newText,
+  ) => _requireConversation.editUserQuery(sessionId, target, newText);
 
   @override
   Future<dynamic> applyFileRewind(
-          String sessionId, Map<String, dynamic> target) =>
-      _requireConversation.applyFileRewind(sessionId, target);
+    String sessionId,
+    Map<String, dynamic> target,
+  ) => _requireConversation.applyFileRewind(sessionId, target);
 
   /// Cleanly closes the connection so the in-app WebView (or another
   /// terminal) can take the slot without a KICK race. Callers reconnect
@@ -1093,11 +1258,17 @@ class DeviceSession extends ChangeNotifier
     _chatSubs.clear();
     _activeWorkspace = null;
     _workspaces = [];
+    _relayTasks = [];
+    _failureReason = null;
     _kicked = false;
     _error = null;
     _setStatus(DeviceStatus.disconnected);
     await _failureSub?.cancel();
     _failureSub = null;
+    await _wsListSub?.cancel();
+    _wsListSub = null;
+    await _appErrSub?.cancel();
+    _appErrSub = null;
     unawaited(sub?.dispose());
     for (final s in chats) {
       unawaited(s.dispose());

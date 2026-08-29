@@ -105,7 +105,8 @@ class _ChatPageState extends State<ChatPage> {
     _loadPrep();
     _inputController.addListener(() {
       final text = _inputController.text;
-      final show = (text.startsWith('/') || text.startsWith('\$')) &&
+      final show =
+          (text.startsWith('/') || text.startsWith('\$')) &&
           !text.contains(' ');
       if (show != _showSlash && mounted) {
         setState(() => _showSlash = show);
@@ -137,6 +138,10 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    // mobile-view-state back to workspace-only (the phone left this task).
+    try {
+      widget.gateway.sendViewState();
+    } catch (_) {}
     _handle?.close();
     _inputController.dispose();
     _scrollController.dispose();
@@ -158,6 +163,8 @@ class _ChatPageState extends State<ChatPage> {
         _handle = handle;
         _error = null;
       });
+      // mobile-view-state: the desktop shows 「手机正在操作此任务」 from it.
+      widget.gateway.sendViewState(taskId: sessionId);
       handle.state.addListener(_scrollToBottom);
       // The server snapshot is a tail window (can be as few as 3 rows).
       // The official client shows the full history immediately, so
@@ -179,8 +186,7 @@ class _ChatPageState extends State<ChatPage> {
       final max = _scrollController.position.maxScrollExtent;
       // Snap to the newest message on open; afterwards only follow while the
       // user is already near the bottom (so reading history isn't yanked).
-      if (_stickToBottom ||
-          _scrollController.position.pixels > max - 400) {
+      if (_stickToBottom || _scrollController.position.pixels > max - 400) {
         _scrollController.animateTo(
           max,
           duration: const Duration(milliseconds: 200),
@@ -192,8 +198,9 @@ class _ChatPageState extends State<ChatPage> {
 
   void _toast(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -232,14 +239,17 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _pickFiles() async {
     try {
       final result = await FilePicker.pickFiles(
-          withData: true, allowMultiple: true);
+        withData: true,
+        allowMultiple: true,
+      );
       if (result == null) return;
       setState(() {
         for (final file in result.files) {
           final bytes = file.bytes;
           if (bytes == null) continue;
           _pendingFiles.add(
-              _PendingFile(file.name, _guessMime(file.name), bytes));
+            _PendingFile(file.name, _guessMime(file.name), bytes),
+          );
         }
       });
     } catch (e) {
@@ -256,8 +266,8 @@ class _ChatPageState extends State<ChatPage> {
         fileName: file.fileName,
         mime: file.mime,
         bytes: file.bytes,
-        onProgress: (p) => setState(() =>
-            _uploadProgress = (i + p) / _pendingFiles.length),
+        onProgress: (p) =>
+            setState(() => _uploadProgress = (i + p) / _pendingFiles.length),
       );
       uploaded.add(descriptor);
     }
@@ -272,22 +282,28 @@ class _ChatPageState extends State<ChatPage> {
     if (text == '/compact' || text.startsWith('/compact ')) {
       _inputController.clear();
       setState(() => _showSlash = false);
-      await _run(tr(context, 'chat.compact.failed'),
-          () => widget.gateway.compact(_requireSession()));
+      await _run(
+        tr(context, 'chat.compact.failed'),
+        () => widget.gateway.compact(_requireSession()),
+      );
       return;
     }
     if (text == '/goal pause') {
       _inputController.clear();
       setState(() => _showSlash = false);
-      await _run(tr(context, 'chat.goal.pauseFailed'),
-          () => widget.gateway.pauseGoal(_requireSession()));
+      await _run(
+        tr(context, 'chat.goal.pauseFailed'),
+        () => widget.gateway.pauseGoal(_requireSession()),
+      );
       return;
     }
     if (text == '/goal resume') {
       _inputController.clear();
       setState(() => _showSlash = false);
-      await _run(tr(context, 'chat.goal.resumeFailed'),
-          () => widget.gateway.resumeGoal(_requireSession()));
+      await _run(
+        tr(context, 'chat.goal.resumeFailed'),
+        () => widget.gateway.resumeGoal(_requireSession()),
+      );
       return;
     }
 
@@ -317,7 +333,8 @@ class _ChatPageState extends State<ChatPage> {
         // Plain text first message is sent WITH createSession (firstInput,
         // mirrors the official composer). This avoids a send-before-subscribe
         // race where the first command can be dropped on a fresh session.
-        final canUseFirstInput = text.isNotEmpty &&
+        final canUseFirstInput =
+            text.isNotEmpty &&
             _pendingFiles.isEmpty &&
             !text.startsWith('/goal ') &&
             heldDisposition == null;
@@ -440,13 +457,11 @@ class _ChatPageState extends State<ChatPage> {
         content: Text(tr(context, 'chat.held.body')),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, 'keepQueueAndSend'),
+            onPressed: () => Navigator.pop(context, 'keepQueueAndSend'),
             child: Text(tr(context, 'chat.held.keep')),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, 'clearQueueAndSend'),
+            onPressed: () => Navigator.pop(context, 'clearQueueAndSend'),
             child: Text(tr(context, 'chat.held.clear')),
           ),
         ],
@@ -483,12 +498,13 @@ class _ChatPageState extends State<ChatPage> {
         rows = res;
       }
       if (rows != null && rows.isNotEmpty) {
-        final older = rows
-            .whereType<Map>()
-            .map((e) => e.cast<String, dynamic>())
-            .toList()
-          ..sort((a, b) => ((a['rowId'] as num?) ?? 0)
-              .compareTo((b['rowId'] as num?) ?? 0));
+        final older =
+            rows.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList()
+              ..sort(
+                (a, b) => ((a['rowId'] as num?) ?? 0).compareTo(
+                  (b['rowId'] as num?) ?? 0,
+                ),
+              );
         state.prependOlderRows(older, firstRowId);
         // Prepending shifts the content above; keep the newest message in
         // view when the user is pinned to the bottom.
@@ -527,21 +543,26 @@ class _ChatPageState extends State<ChatPage> {
   List<_SlashItem> get _slashItems {
     final items = <_SlashItem>[];
     for (final c in _prep?.slashCommands ?? const <SlashCommand>[]) {
-      items.add(_SlashItem(
-        name: c.name,
-        description: c.description,
-        insert: '/${c.name} ',
-        isSkill: false,
-      ));
+      items.add(
+        _SlashItem(
+          name: c.name,
+          description: c.description,
+          insert: '/${c.name} ',
+          isSkill: false,
+        ),
+      );
     }
     for (final s in _skills) {
-      items.add(_SlashItem(
-        name: s.name,
-        description: s.description ??
-            (s.argumentHint != null ? '${s.argumentHint}' : ''),
-        insert: '\$${s.name} ',
-        isSkill: true,
-      ));
+      items.add(
+        _SlashItem(
+          name: s.name,
+          description:
+              s.description ??
+              (s.argumentHint != null ? '${s.argumentHint}' : ''),
+          insert: '\$${s.name} ',
+          isSkill: true,
+        ),
+      );
     }
     return items;
   }
@@ -557,7 +578,8 @@ class _ChatPageState extends State<ChatPage> {
         onSelect: (skill) {
           _inputController.text = '\$${skill.name} ';
           _inputController.selection = TextSelection.collapsed(
-              offset: _inputController.text.length);
+            offset: _inputController.text.length,
+          );
           Navigator.of(context).pop();
           setState(() => _showSlash = false);
         },
@@ -604,23 +626,27 @@ class _ChatPageState extends State<ChatPage> {
           controller: controller,
           maxLines: 1,
           decoration: InputDecoration(
-              hintText: tr(context, 'chat.more.rename.hint')),
+            hintText: tr(context, 'chat.more.rename.hint'),
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr(context, 'devices.add.cancel'))),
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr(context, 'devices.add.cancel')),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, controller.text.trim()),
-              child: Text(tr(context, 'chat.more.rename.save'))),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(tr(context, 'chat.more.rename.save')),
+          ),
         ],
       ),
     );
     controller.dispose();
     if (text == null || text.isEmpty || !mounted) return;
-    await _run(tr(context, 'tasks.opFailed'),
-        () => widget.gateway.renameTask(sessionId, text));
+    await _run(
+      tr(context, 'tasks.opFailed'),
+      () => widget.gateway.renameTask(sessionId, text),
+    );
   }
 
   void _copySessionId() {
@@ -648,10 +674,11 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     final uri = Uri.parse(base);
-    final link = uri.replace(queryParameters: {
-      ...uri.queryParameters,
-      'session': sessionId,
-    }).toString();
+    final link = uri
+        .replace(
+          queryParameters: {...uri.queryParameters, 'session': sessionId},
+        )
+        .toString();
     Clipboard.setData(ClipboardData(text: link));
     _toast(tr(context, 'chat.more.linkCopied'));
   }
@@ -665,19 +692,25 @@ class _ChatPageState extends State<ChatPage> {
       case 'pin':
         if (sessionId != null) {
           final target = !_pinned;
-          _run(tr(context, 'tasks.opFailed'),
-              () => widget.gateway.setTaskPinned(sessionId, target));
+          _run(
+            tr(context, 'tasks.opFailed'),
+            () => widget.gateway.setTaskPinned(sessionId, target),
+          );
           setState(() => _pinned = target);
         }
       case 'archive':
         if (sessionId != null) {
-          _run(tr(context, 'tasks.opFailed'),
-              () => widget.gateway.setTaskArchived(sessionId, true));
+          _run(
+            tr(context, 'tasks.opFailed'),
+            () => widget.gateway.setTaskArchived(sessionId, true),
+          );
         }
       case 'unread':
         if (sessionId != null) {
-          _run(tr(context, 'tasks.opFailed'),
-              () => widget.gateway.setTaskUnread(sessionId, true));
+          _run(
+            tr(context, 'tasks.opFailed'),
+            () => widget.gateway.setTaskUnread(sessionId, true),
+          );
         }
       case 'copyPath':
         _copyWorkspacePath();
@@ -687,8 +720,10 @@ class _ChatPageState extends State<ChatPage> {
         _copyTaskLink();
       case 'compact':
         if (sessionId != null) {
-          _run(tr(context, 'chat.compact.failed'),
-              () => widget.gateway.compact(sessionId));
+          _run(
+            tr(context, 'chat.compact.failed'),
+            () => widget.gateway.compact(sessionId),
+          );
         }
       case 'usage':
         _showUsageSheet();
@@ -700,22 +735,23 @@ class _ChatPageState extends State<ChatPage> {
   /// Official web order: pin toggle / rename / archive / unread, then the
   /// copy actions; client-only extras (link, compact, usage, plans) trail.
   List<PopupMenuEntry<String>> _moreMenuItems(BuildContext context) => [
-        _menuItem('pin', Icons.push_pin_outlined,
-            _pinned ? 'chat.more.unpin' : 'chat.more.pin'),
-        _menuItem('rename', Icons.edit_outlined, 'chat.more.rename'),
-        _menuItem('archive', Icons.archive_outlined, 'chat.more.archive'),
-        _menuItem(
-            'unread', Icons.mark_email_unread_outlined, 'chat.more.unread'),
-        const PopupMenuDivider(),
-        _menuItem(
-            'copyPath', Icons.folder_copy_outlined, 'chat.more.copyPath'),
-        _menuItem('copyId', Icons.tag, 'chat.more.copyId'),
-        const PopupMenuDivider(),
-        _menuItem('copyLink', Icons.link, 'chat.more.copyLink'),
-        _menuItem('compact', Icons.compress, 'chat.more.compact'),
-        _menuItem('usage', Icons.query_stats_outlined, 'chat.more.usage'),
-        _menuItem('plans', Icons.checklist_outlined, 'chat.more.plans'),
-      ];
+    _menuItem(
+      'pin',
+      Icons.push_pin_outlined,
+      _pinned ? 'chat.more.unpin' : 'chat.more.pin',
+    ),
+    _menuItem('rename', Icons.edit_outlined, 'chat.more.rename'),
+    _menuItem('archive', Icons.archive_outlined, 'chat.more.archive'),
+    _menuItem('unread', Icons.mark_email_unread_outlined, 'chat.more.unread'),
+    const PopupMenuDivider(),
+    _menuItem('copyPath', Icons.folder_copy_outlined, 'chat.more.copyPath'),
+    _menuItem('copyId', Icons.tag, 'chat.more.copyId'),
+    const PopupMenuDivider(),
+    _menuItem('copyLink', Icons.link, 'chat.more.copyLink'),
+    _menuItem('compact', Icons.compress, 'chat.more.compact'),
+    _menuItem('usage', Icons.query_stats_outlined, 'chat.more.usage'),
+    _menuItem('plans', Icons.checklist_outlined, 'chat.more.plans'),
+  ];
 
   /// Official content column: messages cap at 848px, the composer at 864px,
   /// centered inside the pane. On narrow screens they simply fill.
@@ -758,69 +794,89 @@ class _ChatPageState extends State<ChatPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 4, 4),
               child: Row(
-              children: [
-                Expanded(
-                  child: Text(widget.title,
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: ZInk.solid(context))),
-                ),
-                if (widget.workspaceLabel != null &&
-                    widget.workspaceLabel!.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: ZInk.tile(context),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: ZInk.hairline(context)),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: ZInk.solid(context),
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.folder_outlined,
-                            size: 13, color: ZInk.muted(context)),
-                        const SizedBox(width: 4),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 96),
-                          child: Text(widget.workspaceLabel!,
+                  ),
+                  if (widget.workspaceLabel != null &&
+                      widget.workspaceLabel!.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: ZInk.tile(context),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: ZInk.hairline(context)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 13,
+                            color: ZInk.muted(context),
+                          ),
+                          const SizedBox(width: 4),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 96),
+                            child: Text(
+                              widget.workspaceLabel!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 12,
-                                  color: ZInk.muted(context))),
-                        ),
-                      ],
+                                fontSize: 12,
+                                color: ZInk.muted(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  PopupMenuButton<String>(
+                    tooltip: tr(context, 'chat.more'),
+                    onSelected: _onMoreMenu,
+                    itemBuilder: _moreMenuItems,
+                    position: PopupMenuPosition.under,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            tr(context, 'chat.more'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: ZColors.sky500,
+                            ),
+                          ),
+                          const Icon(
+                            Icons.keyboard_arrow_down,
+                            size: 16,
+                            color: ZColors.sky500,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
-                PopupMenuButton<String>(
-                  tooltip: tr(context, 'chat.more'),
-                  onSelected: _onMoreMenu,
-                  itemBuilder: _moreMenuItems,
-                  position: PopupMenuPosition.under,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(tr(context, 'chat.more'),
-                            style: const TextStyle(
-                                fontSize: 13, color: ZColors.sky500)),
-                        const Icon(Icons.keyboard_arrow_down,
-                            size: 16, color: ZColors.sky500),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
           ),
           if (_error != null)
             Material(
@@ -828,95 +884,94 @@ class _ChatPageState extends State<ChatPage> {
               child: ListTile(
                 dense: true,
                 title: Text(
-                    trP(context, 'chat.subscribe.failed', ['$_error']),
-                    style: const TextStyle(fontSize: 12)),
+                  trP(context, 'chat.subscribe.failed', ['$_error']),
+                  style: const TextStyle(fontSize: 12),
+                ),
                 trailing: TextButton(
-                    onPressed: _subscribe,
-                    child: Text(tr(context, 'tasks.retry'))),
+                  onPressed: _subscribe,
+                  child: Text(tr(context, 'tasks.retry')),
+                ),
               ),
             ),
           Expanded(
             child: state == null
                 ? Center(
                     child: _sessionId == null
-                        ? Text(tr(context, 'chat.draftHint'),
-                            style:
-                                TextStyle(color: ZInk.faint(context)))
+                        ? Text(
+                            tr(context, 'chat.draftHint'),
+                            style: TextStyle(color: ZInk.faint(context)),
+                          )
                         : const CircularProgressIndicator(),
                   )
                 : !state.ready
-                    ? const Center(child: CircularProgressIndicator())
-                    : AnimatedBuilder(
-                        animation: state,
-                        builder: (context, _) {
-                          final groups = _groupRows(state.rows);
-                          final itemCount = groups.length +
-                              (state.canLoadOlder ? 1 : 0);
-                          if (groups.isEmpty && !state.canLoadOlder) {
-                            return Center(
-                                child: Text(tr(context, 'chat.empty'),
-                                    style: TextStyle(
-                                        color: ZInk.faint(context))));
-                          }
-                          return _contentCol(
-                            ListView.builder(
-                              controller: _scrollController,
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                              itemCount: itemCount,
-                              itemBuilder: (context, index) {
-                              if (state.canLoadOlder && index == 0) {
-                                return Center(
-                                  child: TextButton.icon(
-                                    onPressed: _loadingOlder
-                                        ? null
-                                        : _loadOlder,
-                                    icon: _loadingOlder
-                                        ? const SizedBox(
-                                            width: 12,
-                                            height: 12,
-                                            child:
-                                                CircularProgressIndicator(
-                                                    strokeWidth: 1.5),
-                                          )
-                                        : const Icon(Icons.history,
-                                            size: 14),
-                                    label: Text(
-                                        tr(context, 'chat.loadOlder'),
-                                        style: const TextStyle(
-                                            fontSize: 12)),
-                                  ),
-                                );
-                              }
-                              final groupIndex =
-                                  index - (state.canLoadOlder ? 1 : 0);
-                              final group = groups[groupIndex];
-                              final previous = groupIndex > 0
-                                  ? groups[groupIndex - 1]
-                                  : null;
-                              return Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
-                                children: [
-                                  if (_timeDividerLabel(previous, group) !=
-                                      null)
-                                    _TimeDivider(
-                                        label: _timeDividerLabel(
-                                            previous, group)!),
-                                  _TurnGroupWidget(
-                                    rows: group,
-                                    gateway: widget.gateway,
-                                    sessionId: _sessionId ?? '',
-                                    onAction: _run,
-                                    state: state,
-                                  ),
-                                ],
-                              );
-                            },
+                ? const Center(child: CircularProgressIndicator())
+                : AnimatedBuilder(
+                    animation: state,
+                    builder: (context, _) {
+                      final groups = _groupRows(state.rows);
+                      final itemCount =
+                          groups.length + (state.canLoadOlder ? 1 : 0);
+                      if (groups.isEmpty && !state.canLoadOlder) {
+                        return Center(
+                          child: Text(
+                            tr(context, 'chat.empty'),
+                            style: TextStyle(color: ZInk.faint(context)),
                           ),
-                          );
-                        },
-                      ),
+                        );
+                      }
+                      return _contentCol(
+                        ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          itemCount: itemCount,
+                          itemBuilder: (context, index) {
+                            if (state.canLoadOlder && index == 0) {
+                              return Center(
+                                child: TextButton.icon(
+                                  onPressed: _loadingOlder ? null : _loadOlder,
+                                  icon: _loadingOlder
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.5,
+                                          ),
+                                        )
+                                      : const Icon(Icons.history, size: 14),
+                                  label: Text(
+                                    tr(context, 'chat.loadOlder'),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              );
+                            }
+                            final groupIndex =
+                                index - (state.canLoadOlder ? 1 : 0);
+                            final group = groups[groupIndex];
+                            final previous = groupIndex > 0
+                                ? groups[groupIndex - 1]
+                                : null;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (_timeDividerLabel(previous, group) != null)
+                                  _TimeDivider(
+                                    label: _timeDividerLabel(previous, group)!,
+                                  ),
+                                _TurnGroupWidget(
+                                  rows: group,
+                                  gateway: widget.gateway,
+                                  sessionId: _sessionId ?? '',
+                                  onAction: _run,
+                                  state: state,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
           AnimatedBuilder(
             animation: widget.gateway,
@@ -930,10 +985,8 @@ class _ChatPageState extends State<ChatPage> {
                 children: [
                   _GoalBanner(state: state),
                   _BackgroundWorksBar(state: state),
-                  _QueueBar(
-                      state: state, gateway: widget.gateway),
-                  _PendingInteractions(
-                      state: state, gateway: widget.gateway),
+                  _QueueBar(state: state, gateway: widget.gateway),
+                  _PendingInteractions(state: state, gateway: widget.gateway),
                 ],
               ),
             ),
@@ -948,7 +1001,8 @@ class _ChatPageState extends State<ChatPage> {
                 } else {
                   _inputController.text = item.insert;
                   _inputController.selection = TextSelection.collapsed(
-                      offset: _inputController.text.length);
+                    offset: _inputController.text.length,
+                  );
                   setState(() => _showSlash = false);
                 }
               },
@@ -964,9 +1018,10 @@ class _ChatPageState extends State<ChatPage> {
                     child: CircularProgressIndicator(strokeWidth: 1.5),
                   ),
                   const SizedBox(width: 8),
-                  Text(_progress!,
-                      style: TextStyle(
-                          fontSize: 11, color: ZInk.muted(context))),
+                  Text(
+                    _progress!,
+                    style: TextStyle(fontSize: 11, color: ZInk.muted(context)),
+                  ),
                 ],
               ),
             ),
@@ -974,12 +1029,10 @@ class _ChatPageState extends State<ChatPage> {
             _PendingFilesBar(
               files: _pendingFiles,
               uploadProgress: _uploadProgress,
-              onRemove: (i) =>
-                  setState(() => _pendingFiles.removeAt(i)),
+              onRemove: (i) => setState(() => _pendingFiles.removeAt(i)),
             ),
           AnimatedBuilder(
-            animation:
-                Listenable.merge([?state, widget.gateway]),
+            animation: Listenable.merge([?state, widget.gateway]),
             builder: (context, _) => _contentCol(
               _InputBar(
                 controller: _inputController,
@@ -1005,8 +1058,9 @@ class _ChatPageState extends State<ChatPage> {
     );
     return AnimatedBuilder(
       animation: widget.gateway,
-      builder: (context, _) =>
-          widget.gateway.kicked ? Stack(children: [chat, _kickedOverlay(context)]) : chat,
+      builder: (context, _) => widget.gateway.kicked
+          ? Stack(children: [chat, _kickedOverlay(context)])
+          : chat,
     );
   }
 
@@ -1020,23 +1074,31 @@ class _ChatPageState extends State<ChatPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.phonelink_erase_outlined,
-                    size: 44, color: ZColors.danger),
+                const Icon(
+                  Icons.phonelink_erase_outlined,
+                  size: 44,
+                  color: ZColors.danger,
+                ),
                 const SizedBox(height: 16),
-                Text(tr(context, 'chat.kicked.title'),
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(
+                  tr(context, 'chat.kicked.title'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   tr(context, 'chat.kicked.body'),
                   textAlign: TextAlign.center,
-                  style:
-                      TextStyle(fontSize: 13, color: ZInk.faint(context)),
+                  style: TextStyle(fontSize: 13, color: ZInk.faint(context)),
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: () =>
-                      _run(tr(context, 'tasks.opFailed'), widget.gateway.reconnect),
+                  onPressed: () => _run(
+                    tr(context, 'tasks.opFailed'),
+                    widget.gateway.reconnect,
+                  ),
                   icon: const Icon(Icons.refresh, size: 18),
                   label: Text(tr(context, 'chat.kicked.reconnect')),
                 ),
@@ -1048,8 +1110,7 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  PopupMenuItem<String> _menuItem(
-      String value, IconData icon, String key) {
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String key) {
     return PopupMenuItem(
       value: value,
       child: Row(
@@ -1066,7 +1127,9 @@ class _ChatPageState extends State<ChatPage> {
   /// than 10 minutes apart (official timeline separators). Rows without a
   /// recognizable timestamp field produce no divider.
   String? _timeDividerLabel(
-      List<Map<String, dynamic>>? previous, List<Map<String, dynamic>> group) {
+    List<Map<String, dynamic>>? previous,
+    List<Map<String, dynamic>> group,
+  ) {
     final prevAt = _rowTimestamp(previous?.first);
     final at = _rowTimestamp(group.first);
     if (at == null) return null;
@@ -1113,9 +1176,10 @@ class _GatewayBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(tr(context, 'chat.reconnecting'),
-                style:
-                    TextStyle(fontSize: 12, color: ZInk.soft(context))),
+            child: Text(
+              tr(context, 'chat.reconnecting'),
+              style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
+            ),
           ),
         ],
       ),
@@ -1154,8 +1218,12 @@ AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
     if (template != null) {
       final text = buf!.toString().trim();
       if (text.isNotEmpty) {
-        parts.add((kind: 'text', text: text, row: template,
-            streaming: anyStream));
+        parts.add((
+          kind: 'text',
+          text: text,
+          row: template,
+          streaming: anyStream,
+        ));
       }
       buf = null;
       template = null;
@@ -1205,9 +1273,8 @@ List<List<Map<String, dynamic>>> _groupRows(List<Map<String, dynamic>> rows) {
       continue;
     }
     final isUser = kind == 'userInput';
-    final startsGroup = isUser ||
-        current == null ||
-        current.first['kind'] == 'userInput';
+    final startsGroup =
+        isUser || current == null || current.first['kind'] == 'userInput';
     if (startsGroup) {
       current = [row];
       groups.add(current);
@@ -1273,21 +1340,25 @@ class _TurnGroupWidgetState extends State<_TurnGroupWidget> {
     final children = <Widget>[];
 
     if (isUserTurn) {
-      children.add(_RowWidget(
-        row: first,
-        gateway: gateway,
-        sessionId: sessionId,
-        onAction: onAction,
-        state: widget.state,
-      ));
+      children.add(
+        _RowWidget(
+          row: first,
+          gateway: gateway,
+          sessionId: sessionId,
+          onAction: onAction,
+          state: widget.state,
+        ),
+      );
     }
     if (header != null) {
-      children.add(_TurnHeader(
-        row: header,
-        hasChanges: header['fileChanges'] is Map,
-        expanded: _showChanges,
-        onToggle: () => setState(() => _showChanges = !_showChanges),
-      ));
+      children.add(
+        _TurnHeader(
+          row: header,
+          hasChanges: header['fileChanges'] is Map,
+          expanded: _showChanges,
+          onToggle: () => setState(() => _showChanges = !_showChanges),
+        ),
+      );
     }
 
     // assistant parts in original order (reasoning → text → tool → text …);
@@ -1300,41 +1371,47 @@ class _TurnGroupWidgetState extends State<_TurnGroupWidget> {
     for (var i = 0; i < parts.parts.length; i++) {
       final p = parts.parts[i];
       if (p.kind == 'text') {
-        children.add(_RowWidget(
-          row: {
-            ...?p.row,
-            'kind': 'assistantText',
-            'text': p.text,
-            if (p.streaming) 'state': 'streaming',
-          },
-          showFeedback: i == lastTextIdx,
-          gateway: gateway,
-          sessionId: sessionId,
-          onAction: onAction,
-          state: widget.state,
-        ));
+        children.add(
+          _RowWidget(
+            row: {
+              ...?p.row,
+              'kind': 'assistantText',
+              'text': p.text,
+              if (p.streaming) 'state': 'streaming',
+            },
+            showFeedback: i == lastTextIdx,
+            gateway: gateway,
+            sessionId: sessionId,
+            onAction: onAction,
+            state: widget.state,
+          ),
+        );
       } else {
-        children.add(_RowWidget(
-          row: p.row!,
-          showFeedback: false,
-          gateway: gateway,
-          sessionId: sessionId,
-          onAction: onAction,
-          state: widget.state,
-        ));
+        children.add(
+          _RowWidget(
+            row: p.row!,
+            showFeedback: false,
+            gateway: gateway,
+            sessionId: sessionId,
+            onAction: onAction,
+            state: widget.state,
+          ),
+        );
       }
     }
 
     // Official file-changes card at the end of the turn.
     final fileChanges = header?['fileChanges'];
     if (fileChanges is Map && _showChanges) {
-      children.add(_FileChangesBar(
-        changes: fileChanges.cast<String, dynamic>(),
-        gateway: gateway,
-        sessionId: sessionId,
-        row: header!,
-        onAction: onAction,
-      ));
+      children.add(
+        _FileChangesBar(
+          changes: fileChanges.cast<String, dynamic>(),
+          gateway: gateway,
+          sessionId: sessionId,
+          row: header!,
+          onAction: onAction,
+        ),
+      );
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -1362,9 +1439,9 @@ class _RowWidget extends StatelessWidget {
   });
 
   Map<String, dynamic> get _target => {
-        'rowId': row['rowId'],
-        'entityId': ?row['entityId'],
-      };
+    'rowId': row['rowId'],
+    'entityId': ?row['entityId'],
+  };
 
   void _showActions(BuildContext context) {
     final kind = row['kind'];
@@ -1389,8 +1466,10 @@ class _RowWidget extends StatelessWidget {
               title: Text(tr(context, 'chat.action.retry')),
               onTap: () {
                 Navigator.pop(context);
-                onAction(tr(context, 'chat.action.retry.failed'),
-                    () => gateway.retryTurn(sessionId, _target));
+                onAction(
+                  tr(context, 'chat.action.retry.failed'),
+                  () => gateway.retryTurn(sessionId, _target),
+                );
               },
             ),
             ListTile(
@@ -1398,8 +1477,10 @@ class _RowWidget extends StatelessWidget {
               title: Text(tr(context, 'chat.action.fork')),
               onTap: () {
                 Navigator.pop(context);
-                onAction(tr(context, 'chat.action.fork.failed'),
-                    () => gateway.forkAssistant(sessionId, _target));
+                onAction(
+                  tr(context, 'chat.action.fork.failed'),
+                  () => gateway.forkAssistant(sessionId, _target),
+                );
               },
             ),
             ListTile(
@@ -1425,8 +1506,9 @@ class _RowWidget extends StatelessWidget {
   }
 
   Future<void> _editQuery(BuildContext context) async {
-    final controller =
-        TextEditingController(text: row['text'] as String? ?? '');
+    final controller = TextEditingController(
+      text: row['text'] as String? ?? '',
+    );
     final text = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1438,19 +1520,22 @@ class _RowWidget extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr(context, 'devices.add.cancel'))),
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr(context, 'devices.add.cancel')),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, controller.text.trim()),
-              child: Text(tr(context, 'chat.action.edit.resend'))),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(tr(context, 'chat.action.edit.resend')),
+          ),
         ],
       ),
     );
     controller.dispose();
     if (text == null || text.isEmpty || !context.mounted) return;
-    await onAction(tr(context, 'chat.action.edit.failed'),
-        () => gateway.editUserQuery(sessionId, _target, text));
+    await onAction(
+      tr(context, 'chat.action.edit.failed'),
+      () => gateway.editUserQuery(sessionId, _target, text),
+    );
   }
 
   Future<void> _confirmRewind(BuildContext context) async {
@@ -1461,11 +1546,11 @@ class _RowWidget extends StatelessWidget {
         content: Text(tr(context, 'chat.action.rewind.body')),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr(context, 'devices.add.cancel'))),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr(context, 'devices.add.cancel')),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: ZColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: ZColors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: Text(tr(context, 'chat.action.rewind.confirm')),
           ),
@@ -1473,28 +1558,32 @@ class _RowWidget extends StatelessWidget {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    await onAction(tr(context, 'chat.action.rewind.failed'),
-        () => gateway.applyFileRewind(sessionId, _target));
+    await onAction(
+      tr(context, 'chat.action.rewind.failed'),
+      () => gateway.applyFileRewind(sessionId, _target),
+    );
   }
 
   Future<void> _showFileChanges(BuildContext context) async {
     try {
-      final changes = await gateway.fileChanges(
-        sessionId,
-        target: _target,
-      );
+      final changes = await gateway.fileChanges(sessionId, target: _target);
       if (!context.mounted) return;
       showModalBottomSheet(
         context: context,
         builder: (context) => _JsonSheet(
-            title: tr(context, 'chat.action.fileChanges'), data: changes),
+          title: tr(context, 'chat.action.fileChanges'),
+          data: changes,
+        ),
       );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content:
-                    Text(trP(context, 'chat.action.fileChanges.failed', ['$e']))));
+          SnackBar(
+            content: Text(
+              trP(context, 'chat.action.fileChanges.failed', ['$e']),
+            ),
+          ),
+        );
       }
     }
   }
@@ -1503,16 +1592,21 @@ class _RowWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final widget_ = switch (row['kind']) {
       'userInput' => _UserBubble(
-          row: row, gateway: gateway, sessionId: sessionId),
+        row: row,
+        gateway: gateway,
+        sessionId: sessionId,
+      ),
       'assistantText' => _AssistantBubble(
-          row: row,
-          gateway: gateway,
-          sessionId: sessionId,
-          state: state,
-          showFeedback: showFeedback),
+        row: row,
+        gateway: gateway,
+        sessionId: sessionId,
+        state: state,
+        showFeedback: showFeedback,
+      ),
       'reasoning' => _ReasoningTile(
-          text: row['text'] as String? ?? '',
-          streaming: row['state'] == 'streaming'),
+        text: row['text'] as String? ?? '',
+        streaming: row['state'] == 'streaming',
+      ),
       'toolCall' => _ToolCallTile(row: row),
       // turnHeader rows are lifted out of the stream by _TurnGroupWidget
       'turnHeader' => const SizedBox.shrink(),
@@ -1561,8 +1655,7 @@ class _UserBubbleState extends State<_UserBubble> {
           alignment: Alignment.centerRight,
           child: Container(
             margin: const EdgeInsets.only(left: 56, top: 4, bottom: 4),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: ZColors.darkCard,
               borderRadius: const BorderRadius.only(
@@ -1590,7 +1683,8 @@ class _UserBubbleState extends State<_UserBubble> {
                   longText && !_expanded
                       ? ConstrainedBox(
                           constraints: const BoxConstraints(
-                              maxHeight: _collapsedLines * 21.0),
+                            maxHeight: _collapsedLines * 21.0,
+                          ),
                           child: SingleChildScrollView(
                             physics: const NeverScrollableScrollPhysics(),
                             child: SelectableText(
@@ -1601,21 +1695,21 @@ class _UserBubbleState extends State<_UserBubble> {
                         )
                       : SelectableText(
                           text,
-                          style:
-                              const TextStyle(fontSize: 14, height: 1.5),
+                          style: const TextStyle(fontSize: 14, height: 1.5),
                         ),
                 if (longText)
                   TextButton(
                     style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        minimumSize: Size.zero),
-                    onPressed: () =>
-                        setState(() => _expanded = !_expanded),
+                      visualDensity: VisualDensity.compact,
+                      minimumSize: Size.zero,
+                    ),
+                    onPressed: () => setState(() => _expanded = !_expanded),
                     child: Text(
-                        _expanded
-                            ? tr(context, 'chat.collapse')
-                            : tr(context, 'chat.expand'),
-                        style: const TextStyle(fontSize: 11)),
+                      _expanded
+                          ? tr(context, 'chat.collapse')
+                          : tr(context, 'chat.expand'),
+                      style: const TextStyle(fontSize: 11),
+                    ),
                   ),
               ],
             ),
@@ -1630,9 +1724,12 @@ class _UserBubbleState extends State<_UserBubble> {
               tooltip: tr(context, 'chat.copy'),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: text));
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
                     content: Text(tr(context, 'chat.copied')),
-                    duration: const Duration(seconds: 1)));
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
               },
             ),
             _MiniAction(
@@ -1647,8 +1744,9 @@ class _UserBubbleState extends State<_UserBubble> {
   }
 
   Future<void> _promptEdit(BuildContext context) async {
-    final controller =
-        TextEditingController(text: widget.row['text'] as String? ?? '');
+    final controller = TextEditingController(
+      text: widget.row['text'] as String? ?? '',
+    );
     final newText = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1660,31 +1758,30 @@ class _UserBubbleState extends State<_UserBubble> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr(context, 'devices.add.cancel'))),
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr(context, 'devices.add.cancel')),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, controller.text.trim()),
-              child: Text(tr(context, 'chat.action.edit.resend'))),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(tr(context, 'chat.action.edit.resend')),
+          ),
         ],
       ),
     );
     controller.dispose();
     if (newText == null || newText.isEmpty || !context.mounted) return;
     try {
-      await widget.gateway.editUserQuery(
-        widget.sessionId,
-        {
-          'rowId': widget.row['rowId'],
-          'entityId': ?widget.row['entityId'],
-        },
-        newText,
-      );
+      await widget.gateway.editUserQuery(widget.sessionId, {
+        'rowId': widget.row['rowId'],
+        'entityId': ?widget.row['entityId'],
+      }, newText);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                trP(context, 'chat.action.edit.failed', ['$e']))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'chat.action.edit.failed', ['$e'])),
+          ),
+        );
       }
     }
   }
@@ -1744,8 +1841,10 @@ class _AttachmentViewState extends State<_AttachmentView> {
     final ref = widget.attachment['ref'] as String?;
     if (ref == null) return;
     try {
-      final res = await widget.gateway
-          .attachmentRead(widget.sessionId, ref: ref);
+      final res = await widget.gateway.attachmentRead(
+        widget.sessionId,
+        ref: ref,
+      );
       if (mounted) setState(() => _imageBytes = res.bytes);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
@@ -1766,41 +1865,44 @@ class _AttachmentViewState extends State<_AttachmentView> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.insert_drive_file_outlined,
-                size: 16, color: ZInk.muted(context)),
+            Icon(
+              Icons.insert_drive_file_outlined,
+              size: 16,
+              color: ZInk.muted(context),
+            ),
             const SizedBox(width: 6),
             Flexible(
-              child: Text(fileName,
-                  style: TextStyle(
-                      fontSize: 12, color: ZInk.soft(context)),
-                  overflow: TextOverflow.ellipsis),
+              child: Text(
+                fileName,
+                style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
       );
     }
     if (_failed) {
-      return Text(trP(context, 'chat.attach.loadFailed', [fileName]),
-          style: TextStyle(fontSize: 11, color: ZInk.faint(context)));
+      return Text(
+        trP(context, 'chat.attach.loadFailed', [fileName]),
+        style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
+      );
     }
     if (_imageBytes == null) {
       return const Padding(
         padding: EdgeInsets.all(12),
         child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 1.5)),
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 1.5),
+        ),
       );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
-        child: Image.memory(
-          _imageBytes!,
-          width: 220,
-          fit: BoxFit.cover,
-        ),
+        child: Image.memory(_imageBytes!, width: 220, fit: BoxFit.cover),
       ),
     );
   }
@@ -1827,14 +1929,10 @@ class _AssistantBubble extends StatelessWidget {
     if (sessionId.isEmpty) return;
     // Optimistic: update the icon instantly; server row.upserted confirms.
     state.optimisticRowUpdate(row['rowId'] as num?, {'feedback': value});
-    gateway.setAssistantFeedback(
-      sessionId,
-      {
-        'rowId': row['rowId'],
-        'entityId': ?row['entityId'],
-      },
-      value,
-    );
+    gateway.setAssistantFeedback(sessionId, {
+      'rowId': row['rowId'],
+      'entityId': ?row['entityId'],
+    }, value);
   }
 
   @override
@@ -1868,9 +1966,12 @@ class _AssistantBubble extends StatelessWidget {
                     active: false,
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: text));
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
                           content: Text(tr(context, 'chat.copied')),
-                          duration: const Duration(seconds: 1)));
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
                     },
                   ),
                   _FeedbackButton(
@@ -1882,8 +1983,8 @@ class _AssistantBubble extends StatelessWidget {
                   _FeedbackButton(
                     icon: Icons.thumb_down_alt_outlined,
                     active: feedback == 'dislike',
-                    onTap: () => _setFeedback(
-                        feedback == 'dislike' ? null : 'dislike'),
+                    onTap: () =>
+                        _setFeedback(feedback == 'dislike' ? null : 'dislike'),
                   ),
                   _FeedbackButton(
                     icon: Icons.fork_right,
@@ -1901,7 +2002,9 @@ class _AssistantBubble extends StatelessWidget {
                     child: Text(
                       _formatClock(timestamp),
                       style: TextStyle(
-                          fontSize: 10, color: ZInk.ghost(context)),
+                        fontSize: 10,
+                        color: ZInk.ghost(context),
+                      ),
                     ),
                   ),
               ],
@@ -1932,8 +2035,11 @@ class _FeedbackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon,
-          size: 15, color: active ? ZColors.sky500 : ZInk.ghost(context)),
+      icon: Icon(
+        icon,
+        size: 15,
+        color: active ? ZColors.sky500 : ZInk.ghost(context),
+      ),
       onPressed: onTap,
       visualDensity: VisualDensity.compact,
     );
@@ -1961,18 +2067,17 @@ class _ReasoningTile extends StatelessWidget {
         tilePadding: const EdgeInsets.symmetric(horizontal: 12),
         title: Row(
           children: [
-            Icon(Icons.psychology_outlined,
-                size: 14,
-                color: streaming
-                    ? ZColors.sky400
-                    : ZInk.faint(context)),
+            Icon(
+              Icons.psychology_outlined,
+              size: 14,
+              color: streaming ? ZColors.sky400 : ZInk.faint(context),
+            ),
             const SizedBox(width: 6),
             Text(
               streaming
                   ? tr(context, 'chat.reasoning.thinking')
                   : tr(context, 'chat.reasoning'),
-              style:
-                  TextStyle(fontSize: 12, color: ZInk.muted(context)),
+              style: TextStyle(fontSize: 12, color: ZInk.muted(context)),
             ),
           ],
         ),
@@ -1999,25 +2104,24 @@ class _ToolCallTile extends StatelessWidget {
     final status = row['status'] as String? ?? '';
     final inputText = row['inputText'] as String? ?? '';
     final output = row['output'];
-    final outputText =
-        output is Map ? output['text'] as String? ?? '' : '';
+    final outputText = output is Map ? output['text'] as String? ?? '' : '';
     final error = row['error'];
     final progress = row['progress'];
     final display = row['display'];
     final diff = extractDiff(row);
 
     final (icon, color) = switch (status) {
-      'running' || 'inputStreaming' || 'pendingApproval' => (
-          Icons.hourglass_top,
-          ZColors.sky400
-        ),
+      'running' ||
+      'inputStreaming' ||
+      'pendingApproval' => (Icons.hourglass_top, ZColors.sky400),
       'success' => (Icons.check, ZColors.success),
       'error' => (Icons.error_outline, ZColors.danger),
       'cancelled' => (Icons.block, ZColors.warning),
       _ => (Icons.build_outlined, ZInk.faint(context)),
     };
 
-    final images = display is Map &&
+    final images =
+        display is Map &&
             display['kind'] == 'node_repl_images' &&
             display['images'] is List
         ? display['images'] as List
@@ -2031,39 +2135,47 @@ class _ToolCallTile extends StatelessWidget {
     final title = Row(
       children: [
         Expanded(
-          child: Text(summary.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: ZInk.solid(context))),
+          child: Text(
+            summary.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: ZInk.solid(context),
+            ),
+          ),
         ),
         if (summary.additions > 0)
           Padding(
             padding: const EdgeInsets.only(left: 8),
-            child: Text('+${summary.additions}',
-                style: const TextStyle(
-                    fontSize: 11.5, color: ZColors.success)),
+            child: Text(
+              '+${summary.additions}',
+              style: const TextStyle(fontSize: 11.5, color: ZColors.success),
+            ),
           ),
         if (summary.deletions > 0)
           Padding(
             padding: const EdgeInsets.only(left: 4),
-            child: Text('-${summary.deletions}',
-                style: const TextStyle(
-                    fontSize: 11.5, color: ZColors.danger)),
+            child: Text(
+              '-${summary.deletions}',
+              style: const TextStyle(fontSize: 11.5, color: ZColors.danger),
+            ),
           ),
       ],
     );
     final subtitle = summary.subtitle == null
         ? null
-        : Text(summary.subtitle!,
+        : Text(
+            summary.subtitle!,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 11,
-                color: ZInk.faint(context),
-                fontFamily: 'monospace'));
+              fontSize: 11,
+              color: ZInk.faint(context),
+              fontFamily: 'monospace',
+            ),
+          );
 
     return Material(
       color: ZInk.tile(context),
@@ -2085,9 +2197,10 @@ class _ToolCallTile extends StatelessWidget {
                 _kv(context, tr(context, 'chat.tool.output'), outputText),
               if (error is Map)
                 _kv(
-                    context,
-                    tr(context, 'chat.tool.error'),
-                    '${error['code'] ?? ''} ${error['message'] ?? ''}'),
+                  context,
+                  tr(context, 'chat.tool.error'),
+                  '${error['code'] ?? ''} ${error['message'] ?? ''}',
+                ),
             ],
           ),
           if (progress is Map) _ProgressRow(progress: progress),
@@ -2105,8 +2218,7 @@ class _ToolCallTile extends StatelessWidget {
                   child: Image.memory(
                     base64Decode(image['base64'] as String),
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) =>
-                        const SizedBox.shrink(),
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
                   ),
                 ),
               ),
@@ -2118,8 +2230,7 @@ class _ToolCallTile extends StatelessWidget {
   /// Official tool summary: first line (已写入 `<file>` / 终端 · cmd /
   /// 探索 · N 文件), optional second line (directory path), +/- counts.
   static ({String title, String? subtitle, int additions, int deletions})
-      _toolSummary(
-          BuildContext context, Map<String, dynamic> row, DiffData? diff) {
+  _toolSummary(BuildContext context, Map<String, dynamic> row, DiffData? diff) {
     final toolNameRaw = row['toolName'] as String? ?? 'tool';
     final toolName = toolNameRaw.toLowerCase();
     final inputText = row['inputText'] as String? ?? '';
@@ -2209,8 +2320,9 @@ class _ToolCallTile extends StatelessWidget {
         }
       }
     } catch (_) {}
-    final match =
-        RegExp(r'"(?:file_?[Pp]ath|path|file)"\s*:\s*"([^"]+)"').firstMatch(inputText);
+    final match = RegExp(
+      r'"(?:file_?[Pp]ath|path|file)"\s*:\s*"([^"]+)"',
+    ).firstMatch(inputText);
     return match?.group(1);
   }
 
@@ -2233,8 +2345,7 @@ class _ToolCallTile extends StatelessWidget {
 
   /// Fallback counter for streaming (not-yet-valid-JSON) input.
   static int? _fileCountFromText(String inputText) {
-    final matches =
-        RegExp(r'"(?:path|file)"\s*:').allMatches(inputText).length;
+    final matches = RegExp(r'"(?:path|file)"\s*:').allMatches(inputText).length;
     return matches > 0 ? matches : null;
   }
 
@@ -2268,9 +2379,10 @@ class _ToolCallTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 10.5, color: ZInk.faint(context))),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10.5, color: ZInk.faint(context)),
+          ),
           const SizedBox(height: 2),
           Container(
             width: double.infinity,
@@ -2284,9 +2396,10 @@ class _ToolCallTile extends StatelessWidget {
                   ? '${display.substring(0, 4000)}…'
                   : display,
               style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: ZInk.solid(context)),
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: ZInk.solid(context),
+              ),
             ),
           ),
         ],
@@ -2320,8 +2433,7 @@ class _ProgressRow extends StatelessWidget {
                 if (preview.isNotEmpty) preview,
                 '${(bytes / 1024).toStringAsFixed(1)} KB',
               ].join(' · '),
-              style:
-                  TextStyle(fontSize: 11, color: ZInk.faint(context)),
+              style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -2369,16 +2481,13 @@ class _TurnHeader extends StatelessWidget {
           if (duration.isNotEmpty)
             Text(
               trP(context, 'chat.turn.worked', [duration]),
-              style:
-                  TextStyle(fontSize: 11.5, color: ZInk.faint(context)),
+              style: TextStyle(fontSize: 11.5, color: ZInk.faint(context)),
             ),
           if (hasChanges)
             InkWell(
               onTap: onToggle,
               child: Icon(
-                expanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
+                expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                 size: 16,
                 color: ZInk.ghost(context),
               ),
@@ -2395,8 +2504,7 @@ class _TurnHeader extends StatelessWidget {
     if (ms == null || ms < 0) return '';
     final s = (ms / 1000).round();
     if (s < 60) return trP(context, 'chat.time.secOnly', ['$s']);
-    return trP(
-        context, 'chat.time.minSec', ['${s ~/ 60}', '${s % 60}']);
+    return trP(context, 'chat.time.minSec', ['${s ~/ 60}', '${s % 60}']);
   }
 }
 
@@ -2435,32 +2543,34 @@ class _FileChangesBar extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 text: trP(context, 'chat.files.changed', ['$files']),
-                style: TextStyle(
-                    fontSize: 12, color: ZInk.soft(context)),
+                style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
                 children: [
                   if (adds > 0)
                     TextSpan(
-                        text: '  +$adds',
-                        style: const TextStyle(
-                            color: ZColors.success)),
+                      text: '  +$adds',
+                      style: const TextStyle(color: ZColors.success),
+                    ),
                   if (dels > 0)
                     TextSpan(
-                        text: '  -$dels',
-                        style: const TextStyle(
-                            color: ZColors.danger)),
+                      text: '  -$dels',
+                      style: const TextStyle(color: ZColors.danger),
+                    ),
                 ],
               ),
             ),
           ),
           TextButton(
             onPressed: () => onAction(
-                tr(context, 'chat.action.rewind.failed'),
-                () => gateway.applyFileRewind(sessionId, {
-                      'rowId': row['rowId'],
-                      'entityId': ?row['entityId'],
-                    })),
-            child: Text(tr(context, 'chat.files.undo'),
-                style: const TextStyle(fontSize: 12)),
+              tr(context, 'chat.action.rewind.failed'),
+              () => gateway.applyFileRewind(sessionId, {
+                'rowId': row['rowId'],
+                'entityId': ?row['entityId'],
+              }),
+            ),
+            child: Text(
+              tr(context, 'chat.files.undo'),
+              style: const TextStyle(fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -2482,71 +2592,70 @@ class _TimelineMarkerWidget extends StatelessWidget {
 
     final (icon, text, color) = switch (type) {
       'compact' => (
-          Icons.compress,
-          trP(context, 'chat.marker.compact', [
-            '${marker['status'] ?? ''}',
-            if (marker['tokensBefore'] != null)
-              trP(context, 'chat.marker.tokens', [
-                '${marker['tokensBefore']}',
-                '${marker['tokensAfter'] ?? '?'}',
-              ])
-            else
-              '',
-          ]),
-          ZColors.sky500
-        ),
+        Icons.compress,
+        trP(context, 'chat.marker.compact', [
+          '${marker['status'] ?? ''}',
+          if (marker['tokensBefore'] != null)
+            trP(context, 'chat.marker.tokens', [
+              '${marker['tokensBefore']}',
+              '${marker['tokensAfter'] ?? '?'}',
+            ])
+          else
+            '',
+        ]),
+        ZColors.sky500,
+      ),
       'forkNotice' => (
-          Icons.fork_right,
-          tr(context, 'chat.marker.forkNotice'),
-          ZInk.faint(context)
-        ),
+        Icons.fork_right,
+        tr(context, 'chat.marker.forkNotice'),
+        ZInk.faint(context),
+      ),
       'forkCreated' => (
-          Icons.fork_right,
-          tr(context, 'chat.marker.forkCreated'),
-          ZInk.faint(context)
-        ),
+        Icons.fork_right,
+        tr(context, 'chat.marker.forkCreated'),
+        ZInk.faint(context),
+      ),
       'modelChange' => (
-          Icons.swap_horiz,
-          trP(context, 'chat.marker.modelChange', [
-            '${marker['fromModel'] ?? ''}',
-            '${marker['toModel'] ?? ''}',
-          ]),
-          ZColors.warning
-        ),
+        Icons.swap_horiz,
+        trP(context, 'chat.marker.modelChange', [
+          '${marker['fromModel'] ?? ''}',
+          '${marker['toModel'] ?? ''}',
+        ]),
+        ZColors.warning,
+      ),
       'goalSet' => (
-          Icons.flag_outlined,
-          trP(context, 'chat.marker.goalSet', ['${marker['objective'] ?? ''}']),
-          ZColors.success
-        ),
+        Icons.flag_outlined,
+        trP(context, 'chat.marker.goalSet', ['${marker['objective'] ?? ''}']),
+        ZColors.success,
+      ),
       'goalVerify' => (
-          Icons.fact_check_outlined,
-          trP(context, 'chat.marker.goalVerify', [
-            '${marker['iteration'] ?? '?'}',
-            '${marker['outcome'] ?? ''}',
-          ]),
-          ZColors.success
-        ),
+        Icons.fact_check_outlined,
+        trP(context, 'chat.marker.goalVerify', [
+          '${marker['iteration'] ?? '?'}',
+          '${marker['outcome'] ?? ''}',
+        ]),
+        ZColors.success,
+      ),
       'retryNotice' => (
-          Icons.refresh,
-          trP(context, 'chat.marker.retryNotice', [
-            '${marker['attempt'] ?? '?'}',
-            '${marker['reasonCode'] ?? ''}',
-          ]),
-          ZColors.warning
-        ),
+        Icons.refresh,
+        trP(context, 'chat.marker.retryNotice', [
+          '${marker['attempt'] ?? '?'}',
+          '${marker['reasonCode'] ?? ''}',
+        ]),
+        ZColors.warning,
+      ),
       'checkpointRestored' => (
-          Icons.restore,
-          tr(context, 'chat.marker.checkpointRestored'),
-          ZInk.faint(context)
-        ),
+        Icons.restore,
+        tr(context, 'chat.marker.checkpointRestored'),
+        ZInk.faint(context),
+      ),
       _ => (Icons.info_outline, type, ZInk.faint(context)),
     };
 
     return Center(
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
@@ -2587,25 +2696,24 @@ class _SubagentTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.smart_toy_outlined,
-              size: 15, color: ZInk.muted(context)),
+          Icon(Icons.smart_toy_outlined, size: 15, color: ZInk.muted(context)),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    trP(context, 'chat.subagent', [
-                      '${row['subagentType'] ?? ''}'
-                    ]),
-                    style: TextStyle(
-                        fontSize: 12, color: ZInk.soft(context))),
+                  trP(context, 'chat.subagent', [
+                    '${row['subagentType'] ?? ''}',
+                  ]),
+                  style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
+                ),
                 Text(
-                    '${row['status'] ?? ''}  ${row['summaryText'] ?? ''}',
-                    style: TextStyle(
-                        fontSize: 11, color: ZInk.faint(context)),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
+                  '${row['status'] ?? ''}  ${row['summaryText'] ?? ''}',
+                  style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -2626,9 +2734,10 @@ class _TimeDivider extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Center(
-        child: Text(label,
-            style:
-                TextStyle(fontSize: 10.5, color: ZInk.ghost(context))),
+        child: Text(
+          label,
+          style: TextStyle(fontSize: 10.5, color: ZInk.ghost(context)),
+        ),
       ),
     );
   }
@@ -2654,27 +2763,25 @@ class _GoalBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: ZColors.success.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: ZColors.success.withValues(alpha: 0.25)),
+        border: Border.all(color: ZColors.success.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.flag_outlined,
-              size: 14, color: ZColors.success),
+          const Icon(Icons.flag_outlined, size: 14, color: ZColors.success),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               objective,
-              style:
-                  TextStyle(fontSize: 12, color: ZInk.soft(context)),
+              style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           if (status.isNotEmpty)
-            Text(status,
-                style: const TextStyle(
-                    fontSize: 11, color: ZColors.success)),
+            Text(
+              status,
+              style: const TextStyle(fontSize: 11, color: ZColors.success),
+            ),
         ],
       ),
     );
@@ -2713,8 +2820,7 @@ class _BackgroundWorksBar extends StatelessWidget {
                 '${works.length}',
                 works.map((w) => w['title'] ?? w['kind']).join('、'),
               ]),
-              style:
-                  TextStyle(fontSize: 11.5, color: ZInk.soft(context)),
+              style: TextStyle(fontSize: 11.5, color: ZInk.soft(context)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -2742,20 +2848,19 @@ class _QueueBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: ZColors.sky500.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: ZColors.sky500.withValues(alpha: 0.25)),
+        border: Border.all(color: ZColors.sky500.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.queue_outlined,
-                  size: 14, color: ZColors.sky500),
+              const Icon(Icons.queue_outlined, size: 14, color: ZColors.sky500),
               const SizedBox(width: 6),
-              Text(trP(context, 'chat.queue.count', ['${items.length}']),
-                  style: const TextStyle(
-                      fontSize: 12, color: ZColors.sky500)),
+              Text(
+                trP(context, 'chat.queue.count', ['${items.length}']),
+                style: const TextStyle(fontSize: 12, color: ZColors.sky500),
+              ),
               const Spacer(),
               InkWell(
                 onTap: () {
@@ -2769,8 +2874,7 @@ class _QueueBar extends StatelessWidget {
                   state.autoDrain
                       ? tr(context, 'chat.queue.autoOn')
                       : tr(context, 'chat.queue.autoOff'),
-                  style: TextStyle(
-                      fontSize: 11, color: ZInk.muted(context)),
+                  style: TextStyle(fontSize: 11, color: ZInk.muted(context)),
                 ),
               ),
             ],
@@ -2784,8 +2888,7 @@ class _QueueBar extends StatelessWidget {
                   Expanded(
                     child: Text(
                       '${item['text'] ?? ''}',
-                      style: TextStyle(
-                          fontSize: 12, color: ZInk.soft(context)),
+                      style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2814,22 +2917,23 @@ class _QueueBar extends StatelessWidget {
                         builder: (context) => AlertDialog(
                           title: Text(tr(context, 'chat.queue.delete.title')),
                           content: Text(
-                              '${item['text'] ?? ''}',
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis),
+                            '${item['text'] ?? ''}',
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           actions: [
                             TextButton(
-                                onPressed: () =>
-                                    Navigator.pop(context, false),
-                                child: Text(
-                                    tr(context, 'devices.add.cancel'))),
+                              onPressed: () => Navigator.pop(context, false),
+                              child: Text(tr(context, 'devices.add.cancel')),
+                            ),
                             FilledButton(
                               style: FilledButton.styleFrom(
-                                  backgroundColor: ZColors.danger),
-                              onPressed: () =>
-                                  Navigator.pop(context, true),
+                                backgroundColor: ZColors.danger,
+                              ),
+                              onPressed: () => Navigator.pop(context, true),
                               child: Text(
-                                  tr(context, 'devices.delete.confirm')),
+                                tr(context, 'devices.delete.confirm'),
+                              ),
                             ),
                           ],
                         ),
@@ -2847,10 +2951,12 @@ class _QueueBar extends StatelessWidget {
     );
   }
 
-  Future<void> _edit(BuildContext context, String sessionId,
-      Map<String, dynamic> item) async {
-    final controller =
-        TextEditingController(text: '${item['text'] ?? ''}');
+  Future<void> _edit(
+    BuildContext context,
+    String sessionId,
+    Map<String, dynamic> item,
+  ) async {
+    final controller = TextEditingController(text: '${item['text'] ?? ''}');
     final text = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2862,12 +2968,13 @@ class _QueueBar extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr(context, 'devices.add.cancel'))),
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr(context, 'devices.add.cancel')),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, controller.text.trim()),
-              child: Text(tr(context, 'devices.rename.save'))),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(tr(context, 'devices.rename.save')),
+          ),
         ],
       ),
     );
@@ -2948,8 +3055,10 @@ class _PendingFilesBar extends StatelessWidget {
               for (var i = 0; i < files.length; i++)
                 Chip(
                   avatar: const Icon(Icons.attach_file, size: 14),
-                  label: Text(files[i].fileName,
-                      style: const TextStyle(fontSize: 11)),
+                  label: Text(
+                    files[i].fileName,
+                    style: const TextStyle(fontSize: 11),
+                  ),
                   onDeleted: () => onRemove(i),
                   deleteIcon: const Icon(Icons.close, size: 14),
                   visualDensity: VisualDensity.compact,
@@ -2968,8 +3077,7 @@ class _PendingInteractions extends StatelessWidget {
   final ConversationState state;
   final ChatGateway gateway;
 
-  const _PendingInteractions(
-      {required this.state, required this.gateway});
+  const _PendingInteractions({required this.state, required this.gateway});
 
   @override
   Widget build(BuildContext context) {
@@ -2983,13 +3091,13 @@ class _PendingInteractions extends StatelessWidget {
             interaction: interaction,
             onResolve: ({optionId, freeText, action, content}) =>
                 gateway.resolveInteraction(
-              sessionId,
-              interaction['interactionId'] as String? ?? '',
-              optionId: optionId,
-              freeText: freeText,
-              action: action,
-              content: content,
-            ),
+                  sessionId,
+                  interaction['interactionId'] as String? ?? '',
+                  optionId: optionId,
+                  freeText: freeText,
+                  action: action,
+                  content: content,
+                ),
           ),
       ],
     );
@@ -3003,10 +3111,10 @@ class _InteractionCard extends StatefulWidget {
     String? freeText,
     String? action,
     Map<String, dynamic>? content,
-  }) onResolve;
+  })
+  onResolve;
 
-  const _InteractionCard(
-      {required this.interaction, required this.onResolve});
+  const _InteractionCard({required this.interaction, required this.onResolve});
 
   @override
   State<_InteractionCard> createState() => _InteractionCardState();
@@ -3032,10 +3140,11 @@ class _InteractionCardState extends State<_InteractionCard> {
     setState(() => _busy = true);
     try {
       await widget.onResolve(
-          optionId: optionId,
-          freeText: freeText,
-          action: action,
-          content: content);
+        optionId: optionId,
+        freeText: freeText,
+        action: action,
+        content: content,
+      );
     } catch (_) {
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3052,8 +3161,9 @@ class _InteractionCardState extends State<_InteractionCard> {
     final freeText = payload['freeText'] == true;
 
     final title = kind == 'permission'
-        ? trP(context, 'chat.interact.permission',
-            ['${payload['toolName'] ?? ''}'])
+        ? trP(context, 'chat.interact.permission', [
+            '${payload['toolName'] ?? ''}',
+          ])
         : tr(context, 'chat.interact.waiting');
 
     return Container(
@@ -3062,22 +3172,23 @@ class _InteractionCardState extends State<_InteractionCard> {
       decoration: BoxDecoration(
         color: ZColors.warning.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: ZColors.warning.withValues(alpha: 0.35)),
+        border: Border.all(color: ZColors.warning.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.privacy_tip_outlined,
-                  size: 14, color: ZColors.warning),
+              const Icon(
+                Icons.privacy_tip_outlined,
+                size: 14,
+                color: ZColors.warning,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context)),
+                  style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
                 ),
               ),
             ],
@@ -3086,16 +3197,18 @@ class _InteractionCardState extends State<_InteractionCard> {
               (payload['prompt'] as String? ?? '').isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('${payload['prompt']}',
-                  style: TextStyle(
-                      fontSize: 12, color: ZInk.soft(context))),
+              child: Text(
+                '${payload['prompt']}',
+                style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
+              ),
             ),
           if (kind == 'permission' && payload['summary'] != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('${payload['summary']}',
-                  style: TextStyle(
-                      fontSize: 12, color: ZInk.soft(context))),
+              child: Text(
+                '${payload['summary']}',
+                style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
+              ),
             ),
           const SizedBox(height: 8),
           if (options is List && options.isNotEmpty)
@@ -3108,13 +3221,14 @@ class _InteractionCardState extends State<_InteractionCard> {
                     OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         minimumSize: Size.zero,
                       ),
                       onPressed: _busy
                           ? null
-                          : () =>
-                              _resolve(optionId: '${option['optionId']}'),
+                          : () => _resolve(optionId: '${option['optionId']}'),
                       child: Text(
                         _optionLabel(option),
                         style: const TextStyle(fontSize: 12),
@@ -3147,8 +3261,8 @@ class _InteractionCardState extends State<_InteractionCard> {
                   icon: const Icon(Icons.send, size: 18),
                   onPressed: _busy
                       ? null
-                      : () => _resolve(
-                          freeText: _freeTextController.text.trim()),
+                      : () =>
+                            _resolve(freeText: _freeTextController.text.trim()),
                 ),
               ],
             ),
@@ -3233,15 +3347,21 @@ class _QuestionItemState extends State<_QuestionItem> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${widget.index + 1}. $label',
-              style: TextStyle(
-                  fontSize: 12, height: 1.4, color: ZInk.solid(context))),
+          Text(
+            '${widget.index + 1}. $label',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: ZInk.solid(context),
+            ),
+          ),
           if (q['description'] != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('${q['description']}',
-                  style: TextStyle(
-                      fontSize: 11, color: ZInk.faint(context))),
+              child: Text(
+                '${q['description']}',
+                style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
+              ),
             ),
           if (options is List && options.isNotEmpty)
             Padding(
@@ -3253,8 +3373,10 @@ class _QuestionItemState extends State<_QuestionItem> {
                   for (final o in options)
                     if (o is Map)
                       FilterChip(
-                        label: Text('${o['label'] ?? o['value'] ?? ''}',
-                            style: const TextStyle(fontSize: 12)),
+                        label: Text(
+                          '${o['label'] ?? o['value'] ?? ''}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         selected: _selected.contains('${o['value']}'),
                         onSelected: widget.busy
                             ? null
@@ -3287,8 +3409,10 @@ class _QuestionItemState extends State<_QuestionItem> {
                 onPressed: widget.busy
                     ? null
                     : () => widget.onSelect(List.of(_selected)),
-                child: Text(tr(context, 'chat.interact.submit'),
-                    style: const TextStyle(fontSize: 12)),
+                child: Text(
+                  tr(context, 'chat.interact.submit'),
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
             ),
         ],
@@ -3349,15 +3473,13 @@ class _ModelModeSheet extends StatelessWidget {
         '${config['provider'] ?? ''}/${config['model'] ?? ''}';
     final currentModelValue =
         _isDraft || config['model'] == null || '${config['model']}'.isEmpty
-            ? (draftConfig?['model'] ??
-                '${modelOption?.currentValue ?? ''}')
-            : liveModelValue;
+        ? (draftConfig?['model'] ?? '${modelOption?.currentValue ?? ''}')
+        : liveModelValue;
     final currentThoughtValue = _isDraft
-        ? (draftConfig?['thought'] ??
-            '${thoughtOption?.currentValue ?? ''}')
+        ? (draftConfig?['thought'] ?? '${thoughtOption?.currentValue ?? ''}')
         : (state?.currentThought.isNotEmpty == true
-            ? state!.currentThought
-            : '${thoughtOption?.currentValue ?? ''}');
+              ? state!.currentThought
+              : '${thoughtOption?.currentValue ?? ''}');
     final currentModeValue = _isDraft
         ? (draftConfig?['mode'] ?? 'build')
         : state?.currentMode ?? 'build';
@@ -3370,17 +3492,17 @@ class _ModelModeSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-                _isDraft
-                    ? tr(context, 'chat.sheet.draftTitle')
-                    : tr(context, 'chat.sheet.title'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
+              _isDraft
+                  ? tr(context, 'chat.sheet.draftTitle')
+                  : tr(context, 'chat.sheet.title'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 16),
-            if (modelOption != null &&
-                modelOption.options.isNotEmpty) ...[
-              Text(modelOption.name,
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context))),
+            if (modelOption != null && modelOption.options.isNotEmpty) ...[
+              Text(
+                modelOption.name,
+                style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+              ),
               const SizedBox(height: 8),
               // Official web menu groups models by provider (BigModel /
               // tx / kimi_zz …): header whenever the provider changes.
@@ -3389,14 +3511,14 @@ class _ModelModeSheet extends StatelessWidget {
                     v.modelProviderName !=
                         modelOption.options[i - 1].modelProviderName)
                   Padding(
-                    padding: EdgeInsets.only(
-                        top: i == 0 ? 0 : 10, bottom: 2),
+                    padding: EdgeInsets.only(top: i == 0 ? 0 : 10, bottom: 2),
                     child: Text(
                       v.modelProviderName ?? v.name,
                       style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: ZInk.ghost(context)),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: ZInk.ghost(context),
+                      ),
                     ),
                   ),
                 ListTile(
@@ -3411,30 +3533,34 @@ class _ModelModeSheet extends StatelessWidget {
                         ? ZColors.sky500
                         : ZInk.ghost(context),
                   ),
-                  title: Text(v.name,
-                      style: TextStyle(
-                          fontSize: 13, color: ZInk.solid(context))),
+                  title: Text(
+                    v.name,
+                    style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+                  ),
                   subtitle: v.modelProviderName != null
-                      ? Text(v.modelProviderName!,
+                      ? Text(
+                          v.modelProviderName!,
                           style: TextStyle(
-                              fontSize: 11,
-                              color: ZInk.faint(context)))
+                            fontSize: 11,
+                            color: ZInk.faint(context),
+                          ),
+                        )
                       : null,
                   onTap: () {
                     if (_isDraft) {
                       onDraftChange?.call('model', v.value);
                     } else {
-                      final (provider, model) =
-                          _splitModelValue(v.value);
+                      final (provider, model) = _splitModelValue(v.value);
                       // thought must be valid for the target model:
                       // keep current if supported, else fall back to the
                       // thought option's currentValue.
-                      final currentThought =
-                          state?.currentThought ?? '';
+                      final currentThought = state?.currentThought ?? '';
                       final thoughtOpt = prep?.option('thought_level');
-                      final thought = currentThought.isNotEmpty &&
+                      final thought =
+                          currentThought.isNotEmpty &&
                               (thoughtOpt?.options.any(
-                                      (o) => o.value == currentThought) ??
+                                    (o) => o.value == currentThought,
+                                  ) ??
                                   false)
                           ? currentThought
                           : '${thoughtOpt?.currentValue ?? (currentThought.isNotEmpty ? currentThought : 'enabled')}';
@@ -3461,15 +3587,17 @@ class _ModelModeSheet extends StatelessWidget {
               ],
               const SizedBox(height: 12),
             ] else
-              Text(trP(context, 'chat.sheet.currentModel',
-                  [state?.currentModel ?? '']),
-                  style: TextStyle(
-                      fontSize: 12, color: ZInk.muted(context))),
-            if (thoughtOption != null &&
-                thoughtOption.options.isNotEmpty) ...[
-              Text(thoughtOption.name,
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context))),
+              Text(
+                trP(context, 'chat.sheet.currentModel', [
+                  state?.currentModel ?? '',
+                ]),
+                style: TextStyle(fontSize: 12, color: ZInk.muted(context)),
+              ),
+            if (thoughtOption != null && thoughtOption.options.isNotEmpty) ...[
+              Text(
+                thoughtOption.name,
+                style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -3477,20 +3605,20 @@ class _ModelModeSheet extends StatelessWidget {
                   for (final v in thoughtOption.options)
                     ChoiceChip(
                       label: Text(v.name),
-                      selected: currentThoughtValue == v.value ||
+                      selected:
+                          currentThoughtValue == v.value ||
                           state?.currentThought == v.value,
                       onSelected: (_) {
                         if (_isDraft) {
                           onDraftChange?.call('thought', v.value);
                         } else {
                           final modelValue = currentModelValue;
-                          final (provider, model) =
-                              modelValue.isNotEmpty
-                                  ? _splitModelValue(modelValue)
-                                  : (
-                                      '${config['provider'] ?? ''}',
-                                      '${config['model'] ?? ''}'
-                                    );
+                          final (provider, model) = modelValue.isNotEmpty
+                              ? _splitModelValue(modelValue)
+                              : (
+                                  '${config['provider'] ?? ''}',
+                                  '${config['model'] ?? ''}',
+                                );
                           _apply(
                             context,
                             () => gateway.switchModelConfig(
@@ -3500,10 +3628,7 @@ class _ModelModeSheet extends StatelessWidget {
                               thought: v.value,
                             ),
                             onAccepted: () => state?.optimisticPatch({
-                              'config': {
-                                ...?state!.config,
-                                'thought': v.value,
-                              },
+                              'config': {...?state!.config, 'thought': v.value},
                             }),
                           );
                         }
@@ -3512,9 +3637,10 @@ class _ModelModeSheet extends StatelessWidget {
                 ],
               ),
             ] else if ((state?.thoughtLevels ?? const []).isNotEmpty) ...[
-              Text(tr(context, 'chat.sheet.thought'),
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context))),
+              Text(
+                tr(context, 'chat.sheet.thought'),
+                style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -3537,9 +3663,10 @@ class _ModelModeSheet extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            Text(tr(context, 'chat.sheet.mode'),
-                style: TextStyle(
-                    fontSize: 13, color: ZInk.solid(context))),
+            Text(
+              tr(context, 'chat.sheet.mode'),
+              style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+            ),
             const SizedBox(height: 8),
             if (modeOption != null && modeOption.options.isNotEmpty)
               for (final v in modeOption.options)
@@ -3555,14 +3682,18 @@ class _ModelModeSheet extends StatelessWidget {
                         ? ZColors.sky500
                         : ZInk.ghost(context),
                   ),
-                  title: Text(v.name,
-                      style: TextStyle(
-                          fontSize: 13, color: ZInk.solid(context))),
+                  title: Text(
+                    v.name,
+                    style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+                  ),
                   subtitle: v.description != null
-                      ? Text(v.description!,
+                      ? Text(
+                          v.description!,
                           style: TextStyle(
-                              fontSize: 11,
-                              color: ZInk.faint(context)))
+                            fontSize: 11,
+                            color: ZInk.faint(context),
+                          ),
+                        )
                       : null,
                   onTap: () {
                     if (_isDraft) {
@@ -3570,13 +3701,9 @@ class _ModelModeSheet extends StatelessWidget {
                     } else {
                       _apply(
                         context,
-                        () =>
-                            gateway.switchCollaborationMode(sid, v.value),
+                        () => gateway.switchCollaborationMode(sid, v.value),
                         onAccepted: () => state?.optimisticPatch({
-                          'config': {
-                            ...?state!.config,
-                            'mode': v.value,
-                          },
+                          'config': {...?state!.config, 'mode': v.value},
                         }),
                       );
                     }
@@ -3596,12 +3723,14 @@ class _ModelModeSheet extends StatelessWidget {
                         ? ZColors.sky500
                         : ZInk.ghost(context),
                   ),
-                  title: Text(tr(context, 'chat.mode.$m'),
-                      style:
-                          TextStyle(fontSize: 13, color: ZInk.solid(context))),
-                  subtitle: Text(tr(context, 'chat.mode.$m.desc'),
-                      style: TextStyle(
-                          fontSize: 11, color: ZInk.faint(context))),
+                  title: Text(
+                    tr(context, 'chat.mode.$m'),
+                    style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+                  ),
+                  subtitle: Text(
+                    tr(context, 'chat.mode.$m.desc'),
+                    style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
+                  ),
                   onTap: () {
                     if (_isDraft) {
                       onDraftChange?.call('mode', m);
@@ -3610,10 +3739,7 @@ class _ModelModeSheet extends StatelessWidget {
                         context,
                         () => gateway.switchCollaborationMode(sid, m),
                         onAccepted: () => state?.optimisticPatch({
-                          'config': {
-                            ...?state!.config,
-                            'mode': m,
-                          },
+                          'config': {...?state!.config, 'mode': m},
                         }),
                       );
                     }
@@ -3621,27 +3747,27 @@ class _ModelModeSheet extends StatelessWidget {
                 ),
             if (!_isDraft) ...[
               const SizedBox(height: 16),
-              Text(tr(context, 'chat.sheet.followup'),
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context))),
+              Text(
+                tr(context, 'chat.sheet.followup'),
+                style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 children: [
                   for (final f in const ['queue', 'guide'])
                     ChoiceChip(
-                      label: Text(f == 'queue'
-                          ? tr(context, 'chat.followup.queue')
-                          : tr(context, 'chat.followup.guide')),
+                      label: Text(
+                        f == 'queue'
+                            ? tr(context, 'chat.followup.queue')
+                            : tr(context, 'chat.followup.guide'),
+                      ),
                       selected: followup == f,
                       onSelected: (_) => _apply(
                         context,
                         () => gateway.setFollowupMode(sid, f),
                         onAccepted: () => state?.optimisticPatch({
-                          'config': {
-                            ...?state!.config,
-                            'followupMode': f,
-                          },
+                          'config': {...?state!.config, 'followupMode': f},
                         }),
                       ),
                     ),
@@ -3650,9 +3776,10 @@ class _ModelModeSheet extends StatelessWidget {
             ],
             if (_otherOptions.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text(tr(context, 'chat.sheet.other'),
-                  style: TextStyle(
-                      fontSize: 13, color: ZInk.solid(context))),
+              Text(
+                tr(context, 'chat.sheet.other'),
+                style: TextStyle(fontSize: 13, color: ZInk.solid(context)),
+              ),
               const SizedBox(height: 8),
               for (final o in _otherOptions)
                 Padding(
@@ -3661,16 +3788,22 @@ class _ModelModeSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(o.name,
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: ZInk.solid(context))),
+                        child: Text(
+                          o.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: ZInk.solid(context),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 8),
-                      Text('${o.currentValue}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: ZInk.muted(context))),
+                      Text(
+                        '${o.currentValue}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: ZInk.muted(context),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -3692,10 +3825,15 @@ class _ModelModeSheet extends StatelessWidget {
         if (res is Map &&
             res['status'] != null &&
             res['status'] != 'accepted') {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(trP(context, 'chat.sheet.rejected', [
-            '${res['reasonCode'] ?? res['status']}'
-          ]))));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                trP(context, 'chat.sheet.rejected', [
+                  '${res['reasonCode'] ?? res['status']}',
+                ]),
+              ),
+            ),
+          );
         } else {
           onAccepted?.call();
           Navigator.pop(context);
@@ -3704,7 +3842,8 @@ class _ModelModeSheet extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(trP(context, 'chat.op.failed', ['$e']))));
+          SnackBar(content: Text(trP(context, 'chat.op.failed', ['$e']))),
+        );
       }
     }
   }
@@ -3727,23 +3866,33 @@ class _UsageSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(tr(context, 'chat.more.usage'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(
+              tr(context, 'chat.more.usage'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 16),
             if (contextWindow is Map)
               _UsageRow(
-                  tr(context, 'chat.usage.context'),
-                  '${contextWindow['usedTokens'] ?? '-'} / ${contextWindow['maxTokens'] ?? '-'} tokens'),
+                tr(context, 'chat.usage.context'),
+                '${contextWindow['usedTokens'] ?? '-'} / ${contextWindow['maxTokens'] ?? '-'} tokens',
+              ),
             if (cumulative is Map) ...[
-              _UsageRow(tr(context, 'chat.usage.input'),
-                  '${cumulative['inputTokens'] ?? 0}'),
-              _UsageRow(tr(context, 'chat.usage.output'),
-                  '${cumulative['outputTokens'] ?? 0}'),
-              _UsageRow(tr(context, 'chat.usage.cacheRead'),
-                  '${cumulative['cacheReadTokens'] ?? 0}'),
-              _UsageRow(tr(context, 'chat.usage.cacheWrite'),
-                  '${cumulative['cacheWriteTokens'] ?? 0}'),
+              _UsageRow(
+                tr(context, 'chat.usage.input'),
+                '${cumulative['inputTokens'] ?? 0}',
+              ),
+              _UsageRow(
+                tr(context, 'chat.usage.output'),
+                '${cumulative['outputTokens'] ?? 0}',
+              ),
+              _UsageRow(
+                tr(context, 'chat.usage.cacheRead'),
+                '${cumulative['cacheReadTokens'] ?? 0}',
+              ),
+              _UsageRow(
+                tr(context, 'chat.usage.cacheWrite'),
+                '${cumulative['cacheWriteTokens'] ?? 0}',
+              ),
             ],
           ],
         ),
@@ -3765,12 +3914,14 @@ class _UsageRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style:
-                  TextStyle(fontSize: 13, color: ZInk.muted(context))),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 13, fontFamily: 'monospace')),
+          Text(
+            label,
+            style: TextStyle(fontSize: 13, color: ZInk.muted(context)),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+          ),
         ],
       ),
     );
@@ -3793,9 +3944,10 @@ class _JsonSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 12),
             Flexible(
               child: SingleChildScrollView(
@@ -3803,8 +3955,7 @@ class _JsonSheet extends StatelessWidget {
                   data == null
                       ? tr(context, 'chat.json.empty')
                       : encoder.convert(data),
-                  style: const TextStyle(
-                      fontFamily: 'monospace', fontSize: 11),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
                 ),
               ),
             ),
@@ -3851,8 +4002,8 @@ class _SlashCommandBar extends StatelessWidget {
     final filtered = q.isEmpty
         ? items
         : items
-            .where((c) => c.name.toLowerCase().startsWith(q.toLowerCase()))
-            .toList();
+              .where((c) => c.name.toLowerCase().startsWith(q.toLowerCase()))
+              .toList();
     if (filtered.isEmpty) {
       return Container(
         margin: const EdgeInsets.fromLTRB(14, 4, 14, 0),
@@ -3861,9 +4012,10 @@ class _SlashCommandBar extends StatelessWidget {
           color: ZColors.darkCard,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(tr(context, 'chat.slash.empty'),
-            style:
-                TextStyle(fontSize: 12, color: ZInk.faint(context))),
+        child: Text(
+          tr(context, 'chat.slash.empty'),
+          style: TextStyle(fontSize: 12, color: ZInk.faint(context)),
+        ),
       );
     }
     return Container(
@@ -3883,24 +4035,17 @@ class _SlashCommandBar extends StatelessWidget {
               leading: Icon(
                 command.isSkill
                     ? Icons.auto_awesome_outlined
-                    : (command.name == 'compact'
-                        ? Icons.compress
-                        : Icons.bolt),
+                    : (command.name == 'compact' ? Icons.compress : Icons.bolt),
                 size: 16,
-                color: command.isSkill
-                    ? ZColors.warning
-                    : ZColors.sky500,
+                color: command.isSkill ? ZColors.warning : ZColors.sky500,
               ),
               title: Text(
-                  command.isSkill
-                      ? '\$${command.name}'
-                      : '/${command.name}',
-                  style: const TextStyle(
-                      fontSize: 13, fontFamily: 'monospace')),
+                command.isSkill ? '\$${command.name}' : '/${command.name}',
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              ),
               subtitle: Text(
                 command.description,
-                style:
-                    TextStyle(fontSize: 11, color: ZInk.faint(context)),
+                style: TextStyle(fontSize: 11, color: ZInk.faint(context)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -3937,13 +4082,20 @@ class _SkillsPickerSheet extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(tr(context, 'chat.skills.title'),
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(
+                  tr(context, 'chat.skills.title'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.refresh,
-                      size: 18, color: ZInk.muted(context)),
+                  icon: Icon(
+                    Icons.refresh,
+                    size: 18,
+                    color: ZInk.muted(context),
+                  ),
                   tooltip: tr(context, 'tasks.retry'),
                   onPressed: onRefresh,
                 ),
@@ -3953,15 +4105,15 @@ class _SkillsPickerSheet extends StatelessWidget {
             if (loading)
               const Padding(
                 padding: EdgeInsets.all(16),
-                child:
-                    Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
             else if (list.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(tr(context, 'chat.skills.empty'),
-                    style: TextStyle(
-                        fontSize: 13, color: ZInk.muted(context))),
+                child: Text(
+                  tr(context, 'chat.skills.empty'),
+                  style: TextStyle(fontSize: 13, color: ZInk.muted(context)),
+                ),
               )
             else
               Flexible(
@@ -3971,18 +4123,28 @@ class _SkillsPickerSheet extends StatelessWidget {
                     for (final s in list)
                       ListTile(
                         dense: true,
-                        leading: const Icon(Icons.auto_awesome_outlined,
-                            size: 18, color: ZColors.warning),
-                        title: Text('\$${s.name}',
-                            style: const TextStyle(
-                                fontSize: 14, fontFamily: 'monospace')),
+                        leading: const Icon(
+                          Icons.auto_awesome_outlined,
+                          size: 18,
+                          color: ZColors.warning,
+                        ),
+                        title: Text(
+                          '\$${s.name}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
                         subtitle: s.description != null
-                            ? Text(s.description!,
+                            ? Text(
+                                s.description!,
                                 style: TextStyle(
-                                    fontSize: 12,
-                                    color: ZInk.faint(context)),
+                                  fontSize: 12,
+                                  color: ZInk.faint(context),
+                                ),
                                 maxLines: 2,
-                                overflow: TextOverflow.ellipsis)
+                                overflow: TextOverflow.ellipsis,
+                              )
                             : null,
                         onTap: () => onSelect(s),
                       ),
@@ -4078,8 +4240,9 @@ class _InputBarState extends State<_InputBar> {
   VoidCallback get onModelSheet => widget.onModelSheet;
   VoidCallback get onUsage => widget.onUsage;
 
-  String get _modeValue =>
-      isDraft ? (draftConfig?['mode'] ?? 'build') : (state?.currentMode ?? 'build');
+  String get _modeValue => isDraft
+      ? (draftConfig?['mode'] ?? 'build')
+      : (state?.currentMode ?? 'build');
 
   String get _modelLabel {
     if (isDraft) {
@@ -4098,8 +4261,8 @@ class _InputBarState extends State<_InputBar> {
     final model = state?.currentModel ?? '';
     if (model.isEmpty) return '';
     // Friendly option name from workspace prep when available.
-    for (final o in prep?.option('model')?.options ??
-        const <ConfigOptionValue>[]) {
+    for (final o
+        in prep?.option('model')?.options ?? const <ConfigOptionValue>[]) {
       if (o.value == model) return o.name;
     }
     final idx = model.lastIndexOf('/');
@@ -4109,12 +4272,13 @@ class _InputBarState extends State<_InputBar> {
   String get _thoughtLabel {
     final raw = isDraft
         ? (draftConfig?['thought'] ??
-            '${prep?.option('thought_level')?.currentValue ?? ''}')
+              '${prep?.option('thought_level')?.currentValue ?? ''}')
         : (state?.currentThought ?? '');
     if (raw.isEmpty) return '';
     // Friendly option name (低/高/最高) when prep knows the value.
-    for (final o in prep?.option('thought_level')?.options ??
-        const <ConfigOptionValue>[]) {
+    for (final o
+        in prep?.option('thought_level')?.options ??
+            const <ConfigOptionValue>[]) {
       if (o.value == raw) return o.name;
     }
     return raw;
@@ -4130,9 +4294,8 @@ class _InputBarState extends State<_InputBar> {
   }
 
   List<String> get _thoughtChoices {
-    final fromPrep = prep?.option('thought_level')?.options
-            .map((o) => o.value)
-            .toList() ??
+    final fromPrep =
+        prep?.option('thought_level')?.options.map((o) => o.value).toList() ??
         const <String>[];
     return fromPrep.isNotEmpty ? fromPrep : (state?.thoughtLevels ?? const []);
   }
@@ -4159,8 +4322,7 @@ class _InputBarState extends State<_InputBar> {
                 controller: controller,
                 minLines: 1,
                 maxLines: 6,
-                style: TextStyle(
-                    fontSize: 14, color: ZInk.solid(context)),
+                style: TextStyle(fontSize: 14, color: ZInk.solid(context)),
                 decoration: InputDecoration(
                   hintText: tr(context, 'chat.input.hint'),
                   hintStyle: TextStyle(color: ZInk.ghost(context)),
@@ -4169,15 +4331,20 @@ class _InputBarState extends State<_InputBar> {
                   focusedBorder: InputBorder.none,
                   filled: false,
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 8),
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                 ),
                 textInputAction: TextInputAction.newline,
               ),
               Row(
                 children: [
                   IconButton(
-                    icon: Icon(Icons.add_circle_outline,
-                        size: 20, color: ZInk.muted(context)),
+                    icon: Icon(
+                      Icons.add_circle_outline,
+                      size: 20,
+                      color: ZInk.muted(context),
+                    ),
                     tooltip: tr(context, 'chat.input.attach'),
                     onPressed: sending ? null : onAttach,
                   ),
@@ -4189,10 +4356,7 @@ class _InputBarState extends State<_InputBar> {
                   ),
                   const Spacer(),
                   if (_usageRatio != null)
-                    _UsageRing(
-                      ratio: _usageRatio!,
-                      onTap: onUsage,
-                    ),
+                    _UsageRing(ratio: _usageRatio!, onTap: onUsage),
                   if (_modelLabel.isNotEmpty)
                     _ControlChip(
                       label: _modelLabel,
@@ -4241,8 +4405,7 @@ class _InputBarState extends State<_InputBar> {
                     dense: true,
                     value: m,
                     title: Text(tr(context, 'chat.mode.$m')),
-                    subtitle:
-                        Text(tr(context, 'chat.mode.$m.desc')),
+                    subtitle: Text(tr(context, 'chat.mode.$m.desc')),
                   ),
               ],
             ),
@@ -4273,11 +4436,7 @@ class _InputBarState extends State<_InputBar> {
             child: Column(
               children: [
                 for (final t in choices)
-                  RadioListTile<String>(
-                    dense: true,
-                    value: t,
-                    title: Text(t),
-                  ),
+                  RadioListTile<String>(dense: true, value: t, title: Text(t)),
               ],
             ),
           ),
@@ -4337,8 +4496,7 @@ class _ControlChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: ZInk.tile(context),
           borderRadius: BorderRadius.circular(14),
@@ -4348,11 +4506,12 @@ class _ControlChip extends StatelessWidget {
           children: [
             Icon(icon, size: 12, color: ZInk.muted(context)),
             const SizedBox(width: 4),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 11, color: ZInk.soft(context))),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: ZInk.soft(context)),
+            ),
           ],
         ),
       ),
@@ -4369,8 +4528,7 @@ class _UsageRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        ratio > 0.8 ? ZColors.warning : ZColors.sky500;
+    final color = ratio > 0.8 ? ZColors.warning : ZColors.sky500;
     return IconButton(
       visualDensity: VisualDensity.compact,
       padding: const EdgeInsets.all(6),
@@ -4386,9 +4544,10 @@ class _UsageRing extends StatelessWidget {
             child: Text(
               '${(ratio * 100).round()}',
               style: TextStyle(
-                  fontSize: 6.5,
-                  fontWeight: FontWeight.w600,
-                  color: color),
+                fontSize: 6.5,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
             ),
           ),
         ),
@@ -4411,11 +4570,21 @@ class _RingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     // background ring
-    canvas.drawArc(rect.deflate(stroke / 2), 0, 2 * 3.1415926, false,
-        paint..color = color.withValues(alpha: 0.2));
+    canvas.drawArc(
+      rect.deflate(stroke / 2),
+      0,
+      2 * 3.1415926,
+      false,
+      paint..color = color.withValues(alpha: 0.2),
+    );
     // value arc
-    canvas.drawArc(rect.deflate(stroke / 2), -3.1415926 / 2,
-        2 * 3.1415926 * ratio, false, paint..color = color);
+    canvas.drawArc(
+      rect.deflate(stroke / 2),
+      -3.1415926 / 2,
+      2 * 3.1415926 * ratio,
+      false,
+      paint..color = color,
+    );
   }
 
   @override
@@ -4428,8 +4597,11 @@ class _SendButton extends StatelessWidget {
   final bool sending;
   final VoidCallback onSend;
 
-  const _SendButton(
-      {required this.enabled, required this.sending, required this.onSend});
+  const _SendButton({
+    required this.enabled,
+    required this.sending,
+    required this.onSend,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -4445,11 +4617,17 @@ class _SendButton extends StatelessWidget {
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
-            : Icon(Icons.arrow_upward,
+            : Icon(
+                Icons.arrow_upward,
                 size: 18,
-                color: enabled ? Colors.white : Colors.white.withValues(alpha: 0.7)),
+                color: enabled
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
+              ),
       ),
     );
   }
@@ -4475,4 +4653,3 @@ class _StopButton extends StatelessWidget {
     );
   }
 }
-
