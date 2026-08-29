@@ -1328,7 +1328,8 @@ class _TaskListPageState extends State<TaskListPage> {
     return widgets;
   }
 
-  /// Official bucket labels: today / day-count / last week / earlier.
+  /// Official bucket labels (web taskTimeline): today / yesterday /
+  /// day-count / last week / earlier.
   String _timelineBucketLabel(BuildContext context, int millis, DateTime now) {
     final d = DateTime.fromMillisecondsSinceEpoch(millis);
     final diff = DateTime(
@@ -1337,6 +1338,7 @@ class _TaskListPageState extends State<TaskListPage> {
       now.day,
     ).difference(DateTime(d.year, d.month, d.day)).inDays;
     if (diff <= 0) return tr(context, 'tasks.timeline.today');
+    if (diff == 1) return tr(context, 'tasks.timeline.yesterday');
     if (diff <= 6) return trP(context, 'tasks.timeline.daysAgo', ['$diff']);
     if (diff <= 13) return tr(context, 'tasks.timeline.lastWeek');
     return tr(context, 'tasks.timeline.earlier');

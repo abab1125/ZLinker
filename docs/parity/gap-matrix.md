@@ -19,9 +19,19 @@
 - **T12**:工作区类型徽章 本地/对话/远程(`workspacePurpose`/`kind`)。
 - **行为修正(web parity)**:移动端工作区头部点击=仅展开/收起(网页版移动首页同款;切换工作区发生在打开任务时,bridge-open 携带 taskId);桌面侧栏保留点击切换;非活跃卡片的 ➕ 先开桥再起草稿。
 - 测试:240 全绿;截图管线增加桌面端 RepaintBoundary 回退 + 手机取景框(嵌套 Navigator,弹层入框)。
-- **ZLinker 侧验收**:12 张截图(`docs/screenshots/parity/task_list/zlinker-home-*.png`,zh/en × 默认/滚动展开/操作菜单/删除确认/归档/桌面窗口)全部 judge pass(第一轮 3 fail 已修复:showDialog 落根导航导致取景框外、EN 节标题截断、非活跃工作区折叠不可见)。
-- ⚠️ 已知差异:en 计数「1 tasks」单复数与网页版模板 `{count} tasks` 行为一致,保留。
-- 验收阻塞:网页版基准截图需要可用的远控 URL(sid/hash 会过期),等用户提供后做成对对比(含协议消息序列比对)。
+- **ZLinker 侧验收**:14 张截图(`docs/screenshots/parity/task_list/zlinker-home-*.png`,zh/en × 默认/滚动展开/时间线/操作菜单/删除确认/归档/桌面窗口)全部 judge pass(第一轮 3 fail 已修复:showDialog 落根导航导致取景框外、EN 节标题截断、非活跃工作区折叠不可见)。
+- **网页基准验收**(用户提供新 URL 后完成):
+  - 基准 4 张:`web-home-default/expanded/organize/timeline.png`(真实会话:11 工作区 · 59 任务);
+  - 成对 judge:4 对全部 pass(默认态/展开非活跃工作区/整理面板语义/时间线结构);
+  - 协议序列:原生探针(测试 `live_handshake_probe_test.dart`,env `ZLINKER_PROBE_URL` 触发)实测 auth 配对 223ms → bootstrap(workspaces+tasks+initialViewState)→ workspace-bridge-open → mobile-view-state-update → sessions-index 订阅 → rpc-frame 流,与网页源码确认的协议面同构;11 工作区/59 任务与网页一致;无 app-error;
+  - 对比修复:时间线补「昨天」bucket(网页 taskTimeline 有 today/yesterday/daysAgo 分级);
+  - judge 提出的其余"差异"经源码核对均为其缺少上下文:pinnedSection/permissionTag/unreadAt 在 `IntlProvider` 与主包 testid 中确凿存在,只是当时真实数据未呈现;「高亮行无 pill」与截图证据相反。
+- ⚠️ 已知差异(批次①收尾):
+  - en 计数「1 tasks」单复数与网页版模板 `{count} tasks` 行为一致,保留;
+  - 整理面板 web 为按钮旁 popover,zlinker 为 bottom sheet(移动端惯例,语义一致);
+  - AppBar 右上 zlinker 多一个溢出菜单(承载 automations/offpeak/用量/供应商/归档入口,web 无此聚合入口);
+  - REST POST view-state 双通道未做(WS 主通道已覆盖);
+  - bootstrap 的 `initialViewState`(桌面侧记忆的上次查看位置)未用于初始工作区选择(zlinker 用本地 hub 记忆,行为等价且更符合多设备场景),记 P2。
 
 
 ## 总览与建议执行顺序
@@ -41,39 +51,39 @@
 
 | 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
 |---|---|---|---|---|---|
-| G1 `app-error` 消息 | relay 下发 `{reason, error?}`,reason 枚举 11 种,前端映射为 12 种失败态文案 | `_dispatchPayload` 未处理 `app-error`(grep 0 命中) | 缺失 | **P0** | |
-| G2 失败态文案 | `webRemoteControl.failure.*` 12 态各自文案+动作(sessionNotFound→回桌面重开等) | relay 关闭码 4004/4009/4010/4011/4012/4013 有映射;kicked 有全覆盖遮罩;bootstrap-timeout/recovery-timeout/relay-unavailable/unsupported-action/unexpected-error 无 UI | 部分 | **P0** | |
-| G3 `workspace-list-updated` 推送 | relay 推送工作区/任务总表更新,任务首页据此实时刷新 | remote_client 转成 `workspaceListUpdated` 流,但**无任何消费者**;任务列表只靠手动 reloadTasks | 缺失(流已有,逻辑缺) | **P0** | |
-| G4 mobile-view-state 随导航更新 | 每次切换工作区/任务都发(WS)+ REST POST 双通道;桌面端显示「手机正在操作此任务」 | 仅 `openBridge` 时发一次;打开具体任务不更新 activeTaskId | 部分 | **P0** | |
+| G1 `app-error` 消息 | relay 下发 `{reason, error?}`,reason 枚举 11 种,前端映射为 12 种失败态文案 | `_dispatchPayload` 未处理 `app-error`(grep 0 命中) | 缺失 | **P0** || ✅ |
+| G2 失败态文案 | `webRemoteControl.failure.*` 12 态各自文案+动作(sessionNotFound→回桌面重开等) | relay 关闭码 4004/4009/4010/4011/4012/4013 有映射;kicked 有全覆盖遮罩;bootstrap-timeout/recovery-timeout/relay-unavailable/unsupported-action/unexpected-error 无 UI | 部分 | **P0** || ✅ |
+| G3 `workspace-list-updated` 推送 | relay 推送工作区/任务总表更新,任务首页据此实时刷新 | remote_client 转成 `workspaceListUpdated` 流,但**无任何消费者**;任务列表只靠手动 reloadTasks | 缺失(流已有,逻辑缺) | **P0** || ✅ |
+| G4 mobile-view-state 随导航更新 | 每次切换工作区/任务都发(WS)+ REST POST 双通道;桌面端显示「手机正在操作此任务」 | 仅 `openBridge` 时发一次;打开具体任务不更新 activeTaskId | 部分 | **P0** || ✅ |
 | G5 `unsupportedAction` 边界 | 只支持访问桌面端已打开的工作区;尝试打开未开工作区时明确报错文案 | 无对应处理(工作区列表来自 bootstrap,行为可能碰不到,但需要错误路径兜底) | 缺失 | P1 | |
 | G6 重连提示形态 | 顶部悬浮 toast「正在自动重连...」,成功自动消失 | `_GatewayBanner` 黄条(语义等价) | 一致 | P2 | |
 | G7 `mobile-diagnostic` 上报 | 连接状态迁移/断开/恢复等事件上报 relay 诊断 | 无上报 | 缺失 | P2(服务端观测,不影响功能) | |
-| G8 `bridge-degraded` 恢复 | rpc-transport-fault 等原因 → 降级标记+重试恢复循环 | 已实现(remote_client `_handleBridgeDegraded` + `_recoverBridgeWithRetry`) | 一致 | — | |
-| G9 重连后 bridge 恢复 | relay 静默重连→逐 bridge recover(reconnect-request 廉价路径→全量 reopen 带 recoveryId) | 已实现(remote_client `_recoverActiveBridges`) | 一致 | — | |
+| G8 `bridge-degraded` 恢复 | rpc-transport-fault 等原因 → 降级标记+重试恢复循环 | 已实现(remote_client `_handleBridgeDegraded` + `_recoverBridgeWithRetry`) | 一致 | — || ✅ |
+| G9 重连后 bridge 恢复 | relay 静默重连→逐 bridge recover(reconnect-request 廉价路径→全量 reopen 带 recoveryId) | 已实现(remote_client `_recoverActiveBridges`) | 一致 | — || ✅ |
 
 ## T. task_list_page(任务主页)
 
 | 能力项 | 网页版行为 | ZLinker 现状 | 等级 | 优先级 | 验收 |
 |---|---|---|---|---|---|
-| T1 归档协议形状 | `archiveTask` / `unarchiveTask` 两个独立方法,参数不带布尔字段 | TaskCommandsPort 探测 `archiveTask` 却带 `{archived: bool}` 字段;候选里还有不存在的 `setTaskArchived` | 部分(**协议形状错误**) | **P0** | |
-| T2 任务操作方法名 | `renameTask / setTaskPinned / setTaskUnread / deleteTask`(带 `{taskId, workspacePath, workspaceIdentity?, title/pinned/unread}`) | rename/pin/unread 走探测(候选顺序冗余);**deleteTask 未实现**(任务行菜单无删除) | 部分 | **P0** | |
-| T3 任务行操作菜单 | pin/unpin、rename、delete、archive/unarchive、markAsUnread、resume | 长按菜单仅 停止/暂停/继续;置顶/重命名/归档/未读只在 chat「更多」菜单 | 部分 | **P0** | |
-| T4 删除确认弹窗 | `taskDeleteTitle/Description`(不可恢复警告) | 无删除入口故无弹窗 | 缺失 | **P0**(随 T2) | |
-| T5 实时任务变更 | `onDynamicWorkspaceEvent(workspace_task_list_changed)`(reason: task_created 等)+ relay workspace-list-updated | 无订阅;列表不实时 | 缺失 | **P0** | |
-| T6 归档视图数据源 | `listArchivedTasks` | `_showArchived` 过滤现有列表;归档任务是否出现在 sessions-index 未证实 | 部分(待核实后定) | **P0** | |
-| T7 整理偏好持久化 | localStorage `zcode-web-remote-control-mobile-task-home-preferences`,默认 `{organizeBy:'workspace', sortBy:'updated'}` | organize 面板仅 setState 内存态,重启丢失(默认值恰好一致) | 部分 | P1 | |
+| T1 归档协议形状 | `archiveTask` / `unarchiveTask` 两个独立方法,参数不带布尔字段 | TaskCommandsPort 探测 `archiveTask` 却带 `{archived: bool}` 字段;候选里还有不存在的 `setTaskArchived` | 部分(**协议形状错误**) | **P0** || ✅ |
+| T2 任务操作方法名 | `renameTask / setTaskPinned / setTaskUnread / deleteTask`(带 `{taskId, workspacePath, workspaceIdentity?, title/pinned/unread}`) | rename/pin/unread 走探测(候选顺序冗余);**deleteTask 未实现**(任务行菜单无删除) | 部分 | **P0** || ✅ |
+| T3 任务行操作菜单 | pin/unpin、rename、delete、archive/unarchive、markAsUnread、resume | 长按菜单仅 停止/暂停/继续;置顶/重命名/归档/未读只在 chat「更多」菜单 | 部分 | **P0** || ✅ |
+| T4 删除确认弹窗 | `taskDeleteTitle/Description`(不可恢复警告) | 无删除入口故无弹窗 | 缺失 | **P0**(随 T2) || ✅ |
+| T5 实时任务变更 | `onDynamicWorkspaceEvent(workspace_task_list_changed)`(reason: task_created 等)+ relay workspace-list-updated | 无订阅;列表不实时 | 缺失 | **P0** || ✅ |
+| T6 归档视图数据源 | `listArchivedTasks` | `_showArchived` 过滤现有列表;归档任务是否出现在 sessions-index 未证实 | 部分(待核实后定) | **P0** || ✅ |
+| T7 整理偏好持久化 | localStorage `zcode-web-remote-control-mobile-task-home-preferences`,默认 `{organizeBy:'workspace', sortBy:'updated'}` | organize 面板仅 setState 内存态,重启丢失(默认值恰好一致) | 部分 | P1 || ✅ |
 | T8 状态标签 changeStats | `+{added} -{removed}` 文件变更统计标签 | 无 | 缺失 | P1 | |
-| T9 状态标签 等待确认 | `permissionTag/userInputTag="等待确认"`(任务卡上) | 无 | 缺失 | P1 | |
+| T9 状态标签 等待确认 | `permissionTag/userInputTag="等待确认"`(任务卡上) | 无 | 缺失 | P1 || ✅ |
 | T10 特殊任务标记 | `cronTaskLabel`(定时任务)/`offPeakTaskLabel`(闲时任务) | 无 | 缺失 | P1 | |
 | T11 时间线分组粒度 | today/yesterday/daysAgo/thisWeek/lastWeek/thisMonth/older | 今天/N天前/上周/更早 | 部分(可接受) | P2 | |
-| T12 工作区类型标签 | `workspaceKind.local/conversation/remote` | 无(仅路径) | 缺失 | P2 | |
+| T12 工作区类型标签 | `workspaceKind.local/conversation/remote` | 无(仅路径) | 缺失 | P2 || ✅ |
 | T13 任务搜索 | taskSearch 面板(标题+内容)+ commandCenter | 无 | 缺失 | P2 | |
 | T14 任务分组(颜色分组) | taskGroup CRUD + 拖拽 | 无(桌面功能,移动端 web 也弱化) | 缺失 | P2(倾向不做,标⚠️) | |
 | T15 新建任务多 Agent | claude/opencode/gemini/codex CLI 选择 + Codex 连通性检测 | 单一 ZCode 会话创建 | 缺失 | P2(手机场景存疑,待用户定) | |
-| T16 置顶分区/当前任务高亮 | pinnedSection + 当前任务白色高亮 | 已有(已置顶分组卡 + 白色高亮) | 一致 | — | |
-| T17 下拉刷新/收起全部/刷新按钮 | refresh + collapseAll | 已有 | 一致 | — | |
-| T18 空态/加载态文案 | noTasks/loading/syncingRemoteWorkspaces/每工作区空态 | 已有对应文案 | 一致 | — | |
-| T19 汇总行 | 「{workspaceCount} 个工作区 · {taskCount} 个任务」 | 已有同款汇总行 | 一致 | — | |
+| T16 置顶分区/当前任务高亮 | pinnedSection + 当前任务白色高亮 | 已有(已置顶分组卡 + 白色高亮) | 一致 | — || ✅ |
+| T17 下拉刷新/收起全部/刷新按钮 | refresh + collapseAll | 已有 | 一致 | — || ✅ |
+| T18 空态/加载态文案 | noTasks/loading/syncingRemoteWorkspaces/每工作区空态 | 已有对应文案 | 一致 | — || ✅ |
+| T19 汇总行 | 「{workspaceCount} 个工作区 · {taskCount} 个任务」 | 已有同款汇总行 | 一致 | — || ✅ |
 
 ## C. chat_page(会话页)
 

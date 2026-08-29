@@ -606,6 +606,34 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
 
+    // leave the archive view: a fresh page state resets the toggle
+    await pumpTasks();
+
+    // Timeline grouping (整理任务 → 按时间线): day buckets with
+    // workspace-prefixed rows, web taskTimeline parity. The tidy sheet
+    // stays open after a radio tap — dismiss via the barrier, capture,
+    // then restore workspace grouping the same way.
+    Future<void> setGrouping(String label) async {
+      await tester.tap(find.byTooltip(_isEn ? 'Tidy tasks' : '整理任务'));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      await tester.tap(find.text(label, skipOffstage: true));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      // dismiss by dragging the sheet down (tapAt lands outside the phone
+      // viewport, and the sheet's barrier swallows the tap)
+      await tester.drag(find.byType(BottomSheet), const Offset(0, 240));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+    }
+
+    await setGrouping(_isEn ? 'By timeline' : '按时间线');
+    await _capturePhone(tester, '02a3-tasks-timeline$_suffix');
+    await setGrouping(_isEn ? 'By workspace' : '按工作区');
+
     await pumpTasks();
     await tester.longPress(find.text(
         _isEn ? 'Deploy staging after review' : '评审后部署到预发环境'));
