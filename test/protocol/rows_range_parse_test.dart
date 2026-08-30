@@ -6,7 +6,7 @@ void main() {
   ConversationState stateWithWindow({
     required List<Map<String, dynamic>> window,
     int? totalCount,
-    Object? firstRowId = _absent,
+    Object? firstRowId = _sentinel,
   }) {
     final state = ConversationState();
     final rowsObj = <String, dynamic>{
@@ -15,7 +15,7 @@ void main() {
       // firstRowId intentionally absent unless the test passes it — the
       // live snapshot is NOT guaranteed to carry it (web pages on
       // window[0].rowId instead).
-      if (firstRowId != _absent) 'firstRowId': firstRowId,
+      ?if (!identical(firstRowId, _sentinel)) 'firstRowId': firstRowId,
     };
     state.applyFrame({
       'toSeq': 1,
@@ -33,8 +33,6 @@ void main() {
   }
 
   Map<String, dynamic> row(int id) => {'rowId': id, 'kind': 'assistantText'};
-
-  const absent = _absent;
 
   test('missing snapshot firstRowId falls back to window head (web cursor)',
       () {
@@ -88,8 +86,5 @@ void main() {
   });
 }
 
-class _absent {
-  const _absent();
-  @override
-  String toString() => '_absent';
-}
+class _Absent { const _Absent(); }
+const _sentinel = _Absent();
