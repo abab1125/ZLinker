@@ -169,3 +169,12 @@ devices_page(多设备管理/剪贴板检测/排序置顶)、qr_scan_page(扫码
 - 测试:242 全绿;截图 `docs/screenshots/parity/chat/zlinker-chat-{default,queue-interaction}-{zh,en}.png`。
 - 验收:judge 复验确认全部功能项到位(队列五键+边界禁用、amber 权限卡+单色 snooze、composer 完整、en↔zh 对应)。两条残留意见均为判据书写问题:①取景实为 400×681@2x(Windows 测试窗口高度所限,与批次①已 pass 截图一致,prompt 中误写 1:2.1);②en 图第三条 bullet 在视口边缘截断为长内容自然滚动裁切。裁定不构成产品缺陷。
 - 修复过程发现:pumpWidget 换入同构子树(相同 GlobalKey+Navigator)时 Element 复用导致 Navigator 保留旧路由 —— 聊天捕获的 Navigator 需 UniqueKey 强制重建(管线注释已记)。
+
+## 批次③实现记录(2026-08-30,device_usage + model_providers,代码完成+截图验收)
+
+- **U1**:`usage-stats.getAppUsageSnapshot({range, timeZone})` 接入用量页「应用用量」卡:range 切换(7d/30d/90d/全部)、每日堆叠条形(按模型着色)+图例+token 缩写;估算提示与空态;web `settings.usage.tab.appUsage` 对应。U2(codingPlan 供应商 monitor 图表)未做(数据源在桌面侧 monitor 接口,远控通道不可及 ⚠️)。
+- **U3**:权益卡已有字段保留;5 小时池/每周/并发优先级等字段在 entitlement 返回结构未确认前不展示(不猜协议)⚠️。
+- **M1**:`model-provider.onDidChangeProviderRegistry` 事件监听 → 注册表变更自动重载列表(web 实时刷新 parity)。
+- **M2**:添加表单 Base URL 加「建议」动作:`getEndpointSuggestions` 芯片选择 → `getModelsByEndpoint` 自动填充模型列表。
+- **M3**:`refreshPresetProviders` 未接(无预置供应商目录入口,手机场景低价值 ⚠️)。
+- 测试:242 全绿;截图 `docs/screenshots/parity/usage/`、`docs/screenshots/parity/providers/`(zh/en)judge 4/4 pass。

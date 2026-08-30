@@ -27,6 +27,8 @@ import 'package:zlinker/state/device_store.dart';
 import 'package:zlinker/state/scheduled_store.dart';
 import 'package:zlinker/ui/automations_page.dart';
 import 'package:zlinker/ui/chat/chat_page.dart';
+import 'package:zlinker/ui/device_usage_page.dart';
+import 'package:zlinker/ui/model_providers_page.dart';
 import 'package:zlinker/ui/devices_page.dart';
 import 'package:zlinker/ui/task_list_page.dart';
 import 'package:zlinker/ui/theme.dart';
@@ -807,5 +809,123 @@ void main() {
       }
       await _capture(tester, '05-dualpane$_suffix');
     }
+
+    // 6. Usage page (entitlement + app usage with mock RPC answers).
+    final sessionUsage = FakeDeviceSession(
+      deviceId: deviceA.id,
+      params: deviceA.params!,
+      channelHandler: (channel, method, args) async {
+        if (channel == 'usage-stats' &&
+            method == 'getEntitlementSnapshot') {
+          return {
+            'context': {'displayName': 'GLM Coding Plan'},
+            'provider': {'name': 'BigModel'},
+            'quota': {'level': 'Pro'},
+            'remaining': {
+              'isShow': true,
+              'count': '312 / 600',
+              'percentage': 48,
+              'nextResetTime': _now + 1000 * 60 * 60 * 9,
+            },
+            'quota2': null,
+          };
+        }
+        if (channel == 'usage-stats' && method == 'getAppUsageSnapshot') {
+          return {
+            'dailyModelUsage': [
+              {
+                'date': '2026-08-28',
+                'models': [
+                  {'modelId': 'glm-5.2', 'totalTokens': 182000},
+                  {'modelId': 'glm-5-turbo', 'totalTokens': 46000},
+                ],
+              },
+              {
+                'date': '2026-08-29',
+                'models': [
+                  {'modelId': 'glm-5.2', 'totalTokens': 240000},
+                ],
+              },
+              {
+                'date': '2026-08-30',
+                'models': [
+                  {'modelId': 'glm-5.2', 'totalTokens': 96000},
+                  {'modelId': 'glm-5-turbo', 'totalTokens': 31000},
+                ],
+              },
+            ],
+          };
+        }
+        return null;
+      },
+    );
+    await tester.pumpWidget(_wrap(
+      Center(
+        child: RepaintBoundary(
+          key: _phoneKey,
+          child: SizedBox(
+            width: 400,
+            height: 850,
+            child: Navigator(
+              key: UniqueKey(),
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => DeviceUsagePage(session: sessionUsage),
+              ),
+            ),
+          ),
+        ),
+      ),
+      theme,
+      ui,
+    ));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await _capturePhone(tester, '06-usage$_suffix');
+    sessionUsage.dispose();
+
+    // 7. Model providers (registry list with a mock provider).
+    final sessionProviders = FakeDeviceSession(
+      deviceId: deviceA.id,
+      params: deviceA.params!,
+      channelHandler: (channel, method, args) async {
+        if (channel == 'model-provider' && method == 'getAll') {
+          return [
+            {
+              'id': 'custom:demo',
+              'name': _isEn ? 'Self-hosted gateway' : '自建网关',
+              'apiFormat': 'anthropic-messages',
+              'enabled': true,
+              'endpoints': {'baseURL': 'https://api.example.com/anthropic'},
+              'models': [
+                {'id': 'glm-5.2'},
+                {'id': 'glm-5-air'},
+              ],
+            },
+          ];
+        }
+        return null;
+      },
+    );
+    await tester.pumpWidget(_wrap(
+      Center(
+        child: RepaintBoundary(
+          key: _phoneKey,
+          child: SizedBox(
+            width: 400,
+            height: 850,
+            child: Navigator(
+              key: UniqueKey(),
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => ModelProvidersPage(session: sessionProviders),
+              ),
+            ),
+          ),
+        ),
+      ),
+      theme,
+      ui,
+    ));
+    await tester.pump(const Duration(milliseconds: 1200));
+    await _capturePhone(tester, '07-providers$_suffix');
+    sessionProviders.dispose();
   });
 }

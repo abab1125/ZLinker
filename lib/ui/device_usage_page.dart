@@ -19,10 +19,41 @@ class _DeviceUsagePageState extends State<DeviceUsagePage> {
   String? _error;
   bool _loading = true;
 
+  /// App-usage snapshot (`getAppUsageSnapshot {range, timeZone}`) — the
+  /// local-session-based estimation tab of the web settings usage page.
+  String _appRange = '7d';
+  Map<String, dynamic>? _appUsage;
+  bool _appLoading = false;
+
+  static const _appRanges = ['7d', '30d', '90d', 'all'];
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadAppUsage();
+  }
+
+  Future<void> _loadAppUsage() async {
+    if (!mounted) return;
+    setState(() => _appLoading = true);
+    try {
+      final res = await widget.session.callChannel(
+        'usage-stats',
+        'getAppUsageSnapshot',
+        [
+          {'range': _appRange, 'timeZone': DateTime.now().timeZoneName},
+        ],
+      );
+      if (mounted) {
+        setState(() {
+          _appUsage = res is Map ? res.cast<String, dynamic>() : {};
+          _appLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _appLoading = false);
+    }
   }
 
   Future<void> _load() async {
@@ -90,10 +121,15 @@ class _DeviceUsagePageState extends State<DeviceUsagePage> {
     final quota = data['quota'];
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () async {
+        await _load();
+        await _loadAppUsage();
+      },
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _appUsageCard(context),
+          const SizedBox(height: 10),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -239,6 +275,175 @@ class _DeviceUsagePageState extends State<DeviceUsagePage> {
         ],
       ),
     );
+  }
+
+  /// 应用用量: dailyModelUsage stacked bars (per-day totals with model
+  /// breakdown), web `settings.usage.tab.appUsage` parity.
+  Widget _appUsageCard(BuildContext context) {
+    final daily = _appUsage?['dailyModelUsage'];
+    final days = daily is List ? daily.whereType<Map>().toList() : <Map>[];
+    double maxTotal = 0;
+    final rows = <(String, double, Map<String, double>)>[];
+    for (final d in days) {
+      final models = <String, double>{};
+      final list = d['models'];
+      var total = 0.0;
+      if (list is List) {
+        for (final m in list.whereType<Map>()) {
+          final tokens = ((m['totalTokens'] as num?) ?? 0).toDouble();
+          final id = '${m['modelId'] ?? '?'}';
+          models[id] = (models[id] ?? 0) + tokens;
+          total += tokens;
+        }
+      }
+      if (total > maxTotal) maxTotal = total;
+      rows.add(('${d['date'] ?? ''}', total, models));
+    }
+    final modelIds = <String>{for (final r in rows) for (final k in r.$3.keys) k}.toList()..sort();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(tr(context, 'usageRpc.appUsage'),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+                for (final r in _appRanges)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () {
+                      if (_appRange == r || _appLoading) return;
+                      setState(() => _appRange = r);
+                      _loadAppUsage();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      child: Text(
+                        r == 'all' ? tr(context, 'usageRpc.rangeAll') : r,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _appRange == r
+                              ? ZColors.sky500
+                              : ZInk.muted(context),
+                          fontWeight: _appRange == r
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(tr(context, 'usageRpc.appUsageHint'),
+                style: TextStyle(fontSize: 10.5, color: ZInk.faint(context))),
+            const SizedBox(height: 10),
+            if (_appLoading)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else if (rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(tr(context, 'usageRpc.appUsageEmpty'),
+                    style: TextStyle(fontSize: 12.5, color: ZInk.faint(context))),
+              )
+            else ...[
+              for (final (date, total, models) in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(date,
+                              style: TextStyle(
+                                  fontSize: 11, color: ZInk.muted(context))),
+                          Text(_fmtTokens(total),
+                              style: const TextStyle(fontSize: 11)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: SizedBox(
+                          height: 5,
+                          child: Row(
+                            children: [
+                              for (final id in modelIds)
+                                if ((models[id] ?? 0) > 0 && maxTotal > 0)
+                                  Expanded(
+                                    flex:
+                                        ((models[id]! / maxTotal) * 100)
+                                            .round()
+                                            .clamp(1, 100),
+                                    child: Container(
+                                        color:
+                                            _modelColor(id, modelIds)),
+                                  ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                children: [
+                  for (final id in modelIds)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                              color: _modelColor(id, modelIds),
+                              shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(id,
+                            style: TextStyle(
+                                fontSize: 10, color: ZInk.muted(context))),
+                      ],
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Color _modelColor(String id, List<String> ids) {
+    const palette = [
+      ZColors.sky500,
+      ZColors.success,
+      ZColors.warning,
+      ZColors.danger,
+      ZColors.neutral500,
+    ];
+    final i = ids.indexOf(id);
+    return palette[i % palette.length];
+  }
+
+  static String _fmtTokens(double n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}k';
+    return n.round().toString();
   }
 
   Widget _kv(String label, String value) {

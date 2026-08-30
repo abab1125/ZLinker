@@ -21,10 +21,31 @@ class _ModelProvidersPageState extends State<ModelProvidersPage> {
   bool _loading = true;
   String? _error;
 
+  /// Web parity: `model-provider.onDidChangeProviderRegistry` pushes
+  /// registry revisions — reload the list whenever the desktop changes it.
+  void Function()? _cancelRegistryListener;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _listenRegistry();
+  }
+
+  void _listenRegistry() {
+    final bridge = widget.session.bridge;
+    if (bridge == null) return;
+    _cancelRegistryListener = bridge.channels.addEventListener(
+      Channels.modelProvider,
+      'onDidChangeProviderRegistry',
+      (_) => _load(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _cancelRegistryListener?.call();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -132,7 +153,7 @@ class _ModelProvidersPageState extends State<ModelProvidersPage> {
     final added = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => const _AddProviderSheet(),
+      builder: (context) => _AddProviderSheet(session: widget.session),
     );
     if (added == null) return;
     try {
@@ -244,7 +265,8 @@ class _ModelProvidersPageState extends State<ModelProvidersPage> {
 }
 
 class _AddProviderSheet extends StatefulWidget {
-  const _AddProviderSheet();
+  final DeviceSession session;
+  const _AddProviderSheet({required this.session});
 
   @override
   State<_AddProviderSheet> createState() => _AddProviderSheetState();
@@ -256,12 +278,60 @@ class _AddProviderSheetState extends State<_AddProviderSheet> {
   final _apiKeyController = TextEditingController();
   final _modelsController = TextEditingController();
   String _apiFormat = 'anthropic-messages';
+  List<String> _suggestions = const [];
+  bool _fetchingModels = false;
 
   static const _formats = [
     'anthropic-messages',
     'openai-chat',
     'gemini',
   ];
+
+  /// Web parity: `model-provider.getEndpointSuggestions` (preset endpoints)
+  /// and `getModelsByEndpoint` (fills the model list automatically).
+  Future<dynamic> _call(String method, List<Object?> args) =>
+      widget.session.callChannel('model-provider', method, args);
+
+  Future<void> _suggestEndpoints() async {
+    try {
+      final res = await _call('getEndpointSuggestions', []);
+      final list = res is Map ? res['suggestions'] : res;
+      if (mounted) {
+        setState(() => _suggestions = [
+              for (final s0 in (list as List? ?? const [])) '$s0',
+            ]);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _suggestions = const []);
+      }
+    }
+  }
+
+  Future<void> _fetchModels(String endpoint) async {
+    setState(() => _fetchingModels = true);
+    try {
+      final res = await _call('getModelsByEndpoint', [endpoint]);
+      final ids = <String>[];
+      if (res is List) {
+        for (final m in res) {
+          ids.add(m is Map ? '${m['id'] ?? m['modelId'] ?? ''}' : '$m');
+        }
+      } else if (res is Map && res['models'] is List) {
+        for (final m in res['models'] as List) {
+          ids.add(m is Map ? '${m['id'] ?? m['modelId'] ?? ''}' : '$m');
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _modelsController.text = ids.where((i) => i.isNotEmpty).join(', ');
+          _fetchingModels = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _fetchingModels = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -351,10 +421,37 @@ class _AddProviderSheetState extends State<_AddProviderSheet> {
           const SizedBox(height: 10),
           TextField(
             controller: _baseUrlController,
-            decoration: const InputDecoration(
-                labelText: 'Base URL',
-                hintText: 'https://api.example.com/api/anthropic'),
+            decoration: InputDecoration(
+              labelText: 'Base URL',
+              hintText: 'https://api.example.com/api/anthropic',
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                tooltip: tr(context, 'providers.suggest'),
+                onPressed: _suggestEndpoints,
+              ),
+            ),
           ),
+          if (_suggestions.isNotEmpty)
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final s0 in _suggestions)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        label: Text(s0,
+                            style: const TextStyle(fontSize: 11)),
+                        onPressed: () {
+                          _baseUrlController.text = s0;
+                          _fetchModels(s0);
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
           const SizedBox(height: 10),
           TextField(
             controller: _apiKeyController,
@@ -367,8 +464,19 @@ class _AddProviderSheetState extends State<_AddProviderSheet> {
             controller: _modelsController,
             maxLines: 2,
             decoration: InputDecoration(
-                labelText: tr(context, 'providers.models'),
-                hintText: 'GLM-5.2, GLM-5-Turbo'),
+              labelText: tr(context, 'providers.models'),
+              hintText: 'GLM-5.2, GLM-5-Turbo',
+              suffixIcon: _fetchingModels
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : null,
+            ),
           ),
           const SizedBox(height: 16),
           SizedBox(
