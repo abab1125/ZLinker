@@ -58,8 +58,9 @@ class NotificationHub {
       if (!seen.contains(id)) {
         _tracked.remove(id);
         _taskPhases.remove(id);
-        _offPeakStatuses.remove(id);
-        _autoLastRunAt.remove(id);
+        // Off-peak statuses and automation lastRunAt are DEVICE facts:
+        // keep them across reconnects so a WebView handover or relay flap
+        // doesn't replay completion notifications for old tasks.
       }
     }
   }
@@ -134,10 +135,12 @@ class NotificationHub {
       final tasks = await session.offPeak.list();
       if (_disposed) return;
       final prev = _offPeakStatuses.putIfAbsent(session.deviceId, () => {});
+      final coldStart = prev.isEmpty && tasks.isNotEmpty;
       final events = offPeakEvents(previousStatuses: prev, tasks: tasks);
       _offPeakStatuses[session.deviceId] = {
         for (final t in tasks) t.id: t.status,
       };
+      if (coldStart) return; // first sight baselines silently
       if (!_master || !ui.notifyOffPeakEnabled) return;
       for (final e in events) {
         final title =
@@ -183,6 +186,9 @@ class NotificationHub {
         for (final item in items)
           if (item.lastRunAt != null) item.id: item.lastRunAt!,
       };
+      // No cold-start baseline here (unlike off-peak): a new lastRunAt on
+      // the first poll IS a fresh run worth notifying; replays are already
+      // impossible because the per-device cache survives reconnects.
       if (!_master || !ui.notifyAutoEnabled) return;
       for (final e in events) {
         final title =

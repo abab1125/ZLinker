@@ -252,6 +252,35 @@ void main() {
       expect(service.shown, isEmpty);
     });
 
+    test('reconnect does not replay old off-peak completions', () async {
+      session.offPeakTasks = [
+        {'offPeakTaskId': 'op1', 'title': 'CI 报告', 'status': 'running'},
+      ];
+      await hub.pollOffPeakNow();
+      session.offPeakTasks = [
+        {'offPeakTaskId': 'op1', 'title': 'CI 报告', 'status': 'completed'},
+      ];
+      await hub.pollOffPeakNow();
+      expect(service.shown, hasLength(1));
+
+      // Session leaves the hub (WebView handover / relay flap) and comes
+      // back: the same completed task must NOT notify again.
+      hub.syncWith([]);
+      hub.syncWith([session]);
+      await hub.pollOffPeakNow();
+      expect(service.shown, hasLength(1),
+          reason: 'status cache survives reconnects');
+    });
+
+    test('cold-start first poll baselines existing completions silently',
+        () async {
+      session.offPeakTasks = [
+        {'offPeakTaskId': 'op1', 'title': '旧任务', 'status': 'completed'},
+      ];
+      await hub.pollOffPeakNow();
+      expect(service.shown, isEmpty);
+    });
+
     test('off-peak poll notifies completion with session deep-link',
         () async {
       session.offPeakTasks = [

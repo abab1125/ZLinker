@@ -68,8 +68,12 @@ List<OffPeakEvent> offPeakEvents({
     final was = previousStatuses[t.id];
     // Only notify on the transition, not on every poll of an old entry.
     if (was == t.status) continue;
-    if (was == null && t.finishedAt != null) {
-      // First sight of an already-finished task (history): stay silent.
+    if (was == null) {
+      // First sight of a terminal task is HISTORY (app cold start, or the
+      // per-device status cache was rebuilt after a reconnect): baseline
+      // silently, like the task-phase snapshot. Without this, every
+      // reconnect replayed completion notifications for all finished
+      // off-peak tasks.
       continue;
     }
     if (t.completed) events.add(OffPeakEvent(t, failed: false));
