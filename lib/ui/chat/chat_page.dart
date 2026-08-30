@@ -2298,6 +2298,58 @@ class _ToolCallTile extends StatelessWidget {
         deletions: diff?.deletions ?? 0,
       );
     }
+    if (toolName.contains('taskoutput')) {
+      // Web chat.toolCall.taskOutput.* states, keyed off the row status
+      // machine (pending/running/completed/failed/denied/stopped).
+      final st = '${row['status'] ?? ''}';
+      final title = switch (st) {
+        'pending' => tr(context, 'chat.tool.taskOutput.fetching'),
+        'running' => tr(context, 'chat.tool.taskOutput.running'),
+        'failed' => tr(context, 'chat.tool.taskOutput.failed'),
+        'denied' => tr(context, 'chat.tool.taskOutput.denied'),
+        'stopped' => tr(context, 'chat.tool.taskOutput.stopped'),
+        _ => tr(context, 'chat.tool.taskOutput.retrieved'),
+      };
+      return (
+        title: '${tr(context, 'chat.tool.taskOutput.kind')} · $title',
+        subtitle: null,
+        additions: 0,
+        deletions: 0,
+      );
+    }
+    if (toolName.contains('taskstop')) {
+      final st = '${row['status'] ?? ''}';
+      final title = switch (st) {
+        'pending' || 'running' =>
+          tr(context, 'chat.tool.taskStop.stopping'),
+        'failed' => tr(context, 'chat.tool.taskStop.failed'),
+        'denied' => tr(context, 'chat.tool.taskStop.denied'),
+        'stopped' => tr(context, 'chat.tool.taskStop.cancelled'),
+        _ => tr(context, 'chat.tool.taskStop.stopped'),
+      };
+      return (
+        title: '${tr(context, 'chat.tool.taskStop.kind')} · $title',
+        subtitle: null,
+        additions: 0,
+        deletions: 0,
+      );
+    }
+    if (toolName.contains('sendmessage')) {
+      final st = '${row['status'] ?? ''}';
+      final title = switch (st) {
+        'pending' || 'running' => tr(context, 'chat.tool.send.sending'),
+        'failed' => tr(context, 'chat.tool.send.failed'),
+        'denied' => tr(context, 'chat.tool.send.denied'),
+        'stopped' => tr(context, 'chat.tool.send.stopped'),
+        _ => tr(context, 'chat.tool.send.sent'),
+      };
+      return (
+        title: '${tr(context, 'chat.tool.send.kind')} · $title',
+        subtitle: null,
+        additions: 0,
+        deletions: 0,
+      );
+    }
     if (toolName.contains('askuserquestion') ||
         toolName.contains('ask_user_question')) {
       // Web chat.askQuestion.* parity: asking → asked · N questions →
