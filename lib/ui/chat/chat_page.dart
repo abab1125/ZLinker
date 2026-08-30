@@ -485,7 +485,17 @@ class _ChatPageState extends State<ChatPage> {
       );
       List? rows;
       int? firstRowId;
+      bool? hasMore;
+      String? atLogEpoch;
       if (res is Map) {
+        hasMore = res['hasMore'] as bool?;
+        atLogEpoch = res['atLogEpoch'] as String?;
+        // Web parity: drop the whole result when the epoch moved — the
+        // window no longer belongs to this subscription.
+        if (!state.rangeEnvelopeMatches(atLogEpoch)) {
+          if (mounted) _toast(tr(context, 'chat.loadOlder.stale'));
+          return;
+        }
         final rowsObj = res['rows'];
         if (rowsObj is Map) {
           rows = rowsObj['window'] as List? ?? rowsObj['rows'] as List?;
@@ -506,11 +516,14 @@ class _ChatPageState extends State<ChatPage> {
                   (b['rowId'] as num?) ?? 0,
                 ),
               );
-        state.prependOlderRows(older, firstRowId);
+        state
+          ..hasMore = hasMore
+          ..prependOlderRows(older, firstRowId);
         // Prepending shifts the content above; keep the newest message in
         // view when the user is pinned to the bottom.
         if (_stickToBottom) _scrollToBottom();
       } else if (state.rows.isNotEmpty) {
+        state.hasMore = hasMore ?? false;
         if (mounted) _toast(tr(context, 'chat.noOlder'));
       }
     } catch (e) {

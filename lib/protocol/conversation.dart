@@ -1375,6 +1375,11 @@ class ConversationState extends ChangeNotifier {
   int totalCount = 0;
   bool ready = false;
 
+  /// `hasMore` from the latest conversationRowsRangeV4 response — the web
+  /// store pages on this flag. Null until the first load-older runs (older
+  /// builds fall back to the totalCount heuristic).
+  bool? hasMore;
+
   void applyFrame(
     Map<String, dynamic> frame, {
     required void Function() onGap,
@@ -1422,7 +1427,8 @@ class ConversationState extends ChangeNotifier {
                 .toList()
           : [];
       totalCount = (rowsObj['totalCount'] as num?)?.toInt() ?? rows.length;
-      firstRowId = (rowsObj['firstRowId'] as num?)?.toInt();
+      firstRowId = (rowsObj['firstRowId'] as num?)?.toInt() ??
+          (rows.isNotEmpty ? (rows.first['rowId'] as num?)?.toInt() : null);
     } else {
       rows = [];
       totalCount = 0;
@@ -1606,8 +1612,20 @@ class ConversationState extends ChangeNotifier {
   Map<String, dynamic>? get usage =>
       (snapshot?['usage'] as Map?)?.cast<String, dynamic>();
 
-  /// Older history exists beyond the current window.
-  bool get canLoadOlder => firstRowId != null && totalCount > rows.length;
+  /// Older history exists beyond the current window. Prefers the server's
+  /// `hasMore` (web parity) once known; falls back to the totalCount
+  /// heuristic for the initial state.
+  bool get canLoadOlder {
+    if (firstRowId == null) return false;
+    if (hasMore != null) return hasMore! && rows.isNotEmpty;
+    return totalCount > rows.length;
+  }
+
+  /// Applies a conversationRowsRangeV4 response envelope: the web store
+  /// drops the result when its log epoch no longer matches the live
+  /// subscription, and pages on `hasMore`.
+  bool rangeEnvelopeMatches(String? atLogEpoch) =>
+      atLogEpoch == null || atLogEpoch == logEpoch;
 
   /// Prepends older rows loaded via rowsRange (deduped by rowId).
   void prependOlderRows(List<Map<String, dynamic>> older, int? newFirstRowId) {
