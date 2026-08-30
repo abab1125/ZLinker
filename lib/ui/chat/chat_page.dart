@@ -1239,6 +1239,7 @@ typedef AssistantPart = ({
   String kind,
   String? text,
   Map<String, dynamic>? row,
+  List<Map<String, dynamic>>? group,
   bool streaming,
 });
 
@@ -1252,6 +1253,17 @@ typedef AssistantTurnParts = ({
   bool streaming,
 });
 
+/// Execute-family tool rows (bash/terminal/exec/...) share one summary
+/// card when consecutive — web executeGroup「终端 · N 个命令」parity.
+bool _isExecuteTool(Map<String, dynamic> row) {
+  if (row['kind'] != 'toolCall') return false;
+  final t = '${row['toolName'] ?? ''}'.toLowerCase();
+  return t.contains('bash') ||
+      t.contains('terminal') ||
+      t.contains('exec') ||
+      t.contains('command');
+}
+
 AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
   final parts = <AssistantPart>[];
   Map<String, dynamic>? header;
@@ -1259,6 +1271,7 @@ AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
   Map<String, dynamic>? template;
   var anyStream = false;
   var sawStreaming = false;
+  final executeRun = <Map<String, dynamic>>[];
 
   void flushText() {
     if (template != null) {
@@ -1268,6 +1281,7 @@ AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
           kind: 'text',
           text: text,
           row: template,
+          group: null,
           streaming: anyStream,
         ));
       }
@@ -1277,9 +1291,32 @@ AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
     }
   }
 
+  void flushExecuteRun() {
+    if (executeRun.isEmpty) return;
+    if (executeRun.length == 1) {
+      parts.add((
+        kind: 'row',
+        text: null,
+        row: executeRun.single,
+        group: null,
+        streaming: false,
+      ));
+    } else {
+      parts.add((
+        kind: 'rowGroup',
+        text: null,
+        row: executeRun.first,
+        group: List.of(executeRun),
+        streaming: false,
+      ));
+    }
+    executeRun.clear();
+  }
+
   for (final row in rows) {
     final kind = row['kind'];
     if (kind == 'assistantText') {
+      flushExecuteRun();
       template ??= row;
       buf ??= StringBuffer();
       final t = row['text'] as String? ?? '';
@@ -1291,12 +1328,22 @@ AssistantTurnParts assistantTurnParts(List<Map<String, dynamic>> rows) {
       }
     } else if (kind == 'turnHeader') {
       header = row;
-    } else {
+    } else if (_isExecuteTool(row)) {
       flushText();
-      parts.add((kind: 'row', text: null, row: row, streaming: false));
+      executeRun.add(row);
+    } else {
+      flushExecuteRun();
+      parts.add((
+        kind: 'row',
+        text: null,
+        row: row,
+        group: null,
+        streaming: false,
+      ));
     }
   }
   flushText();
+  flushExecuteRun();
   return (parts: parts, header: header, streaming: sawStreaming);
 }
 
@@ -1426,6 +1473,16 @@ class _TurnGroupWidgetState extends State<_TurnGroupWidget> {
               if (p.streaming) 'state': 'streaming',
             },
             showFeedback: i == lastTextIdx,
+            gateway: gateway,
+            sessionId: sessionId,
+            onAction: onAction,
+            state: widget.state,
+          ),
+        );
+      } else if (p.kind == 'rowGroup') {
+        children.add(
+          _ToolGroupCard(
+            rows: p.group ?? [if (p.row != null) p.row!],
             gateway: gateway,
             sessionId: sessionId,
             onAction: onAction,
@@ -3293,6 +3350,115 @@ class _QueueBar extends StatelessWidget {
       });
     }
     await gateway.editQueueItem(sessionId, '${item['queueItemId']}', text);
+  }
+}
+
+/// Collapsed run of consecutive execute-family tool rows:
+/// 「终端 · N 个命令」 — tap expands the individual tool cards.
+class _ToolGroupCard extends StatefulWidget {
+  final List<Map<String, dynamic>> rows;
+  final ChatGateway gateway;
+  final String sessionId;
+  final Future<void> Function(String, Future<dynamic> Function()) onAction;
+  final ConversationState state;
+
+  const _ToolGroupCard({
+    required this.rows,
+    required this.gateway,
+    required this.sessionId,
+    required this.onAction,
+    required this.state,
+  });
+
+  @override
+  State<_ToolGroupCard> createState() => _ToolGroupCardState();
+}
+
+class _ToolGroupCardState extends State<_ToolGroupCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.rows.length;
+    var failed = 0;
+    var stopped = 0;
+    var lastCmd = '';
+    for (final r in widget.rows) {
+      final st = '${r['status'] ?? ''}';
+      if (st == 'failed') failed += 1;
+      if (st == 'stopped' || st == 'denied') stopped += 1;
+      final input = r['inputText'] as String? ?? '';
+      if (lastCmd.isEmpty && input.isNotEmpty) {
+        lastCmd = input.split('\n').first;
+      }
+    }
+    final bits = [
+      trP(context, 'chat.tool.group.count', ['$n']),
+      if (failed > 0) trP(context, 'chat.tool.group.failed', ['$failed']),
+      if (stopped > 0) trP(context, 'chat.tool.group.stopped', ['$stopped']),
+    ].join(' · ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: ZInk.tile(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: ZInk.hairline(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.terminal,
+                      size: 14, color: ZInk.muted(context)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${tr(context, 'chat.tool.group.terminal')} · $bits'
+                      '${lastCmd.isEmpty ? '' : '  ·  $lastCmd'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12, color: ZInk.soft(context)),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: ZInk.ghost(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Column(
+                children: [
+                  for (final r in widget.rows)
+                    _RowWidget(
+                      row: r,
+                      showFeedback: false,
+                      gateway: widget.gateway,
+                      sessionId: widget.sessionId,
+                      onAction: widget.onAction,
+                      state: widget.state,
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
