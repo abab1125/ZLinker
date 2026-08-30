@@ -2298,6 +2298,40 @@ class _ToolCallTile extends StatelessWidget {
         deletions: diff?.deletions ?? 0,
       );
     }
+    if (toolName.contains('askuserquestion') ||
+        toolName.contains('ask_user_question')) {
+      // Web chat.askQuestion.* parity: asking → asked · N questions →
+      // no-answer / auto-continued. Question count comes from the input
+      // JSON's questions array when parseable (no guessed fields beyond
+      // that); output text carries the auto-continue notice.
+      final running = row['status'] == 'running' || row['status'] == 'pending';
+      final outputText = row['outputText'] as String? ?? '';
+      var count = 0;
+      try {
+        final input = jsonDecode(inputText);
+        if (input is Map && input['questions'] is List) {
+          count = (input['questions'] as List).length;
+        }
+      } catch (_) {}
+      final noAnswer = outputText.isNotEmpty &&
+          (outputText.contains('未提供回答') ||
+              outputText.contains('No answer') ||
+              outputText.contains('auto-continued') ||
+              outputText.contains('自动继续'));
+      return (
+        title: running
+            ? tr(context, 'chat.tool.askQuestion.asking')
+            : noAnswer
+                ? tr(context, 'chat.tool.askQuestion.autoContinued')
+                : count > 0
+                    ? trP(context, 'chat.tool.askQuestion.askedN',
+                        ['$count'])
+                    : tr(context, 'chat.tool.askQuestion.asked'),
+        subtitle: null,
+        additions: 0,
+        deletions: 0,
+      );
+    }
     if (toolName.contains('bash') ||
         toolName.contains('terminal') ||
         toolName.contains('exec') ||
