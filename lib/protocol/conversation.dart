@@ -431,6 +431,56 @@ class ConversationTransport {
   Future<dynamic> setAutoDrain(String sessionId, bool autoDrain) =>
       sendCommand(sessionId, 'setAutoDrain', {'autoDrain': autoDrain});
 
+  /// Moves [queueItemId] directly before [beforeQueueItemId] in the held
+  /// queue (`null` = move to the end). CAS command per the web schema.
+  Future<dynamic> reorderQueueItem(
+    String sessionId,
+    String queueItemId,
+    String? beforeQueueItemId,
+  ) => sendCommand(sessionId, 'reorderQueueItem', {
+    'queueItemId': queueItemId,
+    'beforeQueueItemId': beforeQueueItemId,
+  });
+
+  /// Defers the interaction auto-resolution timer (desktop setting
+  /// 「提问自动继续」≈ 5 minutes). No CAS fields in the web schema.
+  Future<dynamic> snoozeInteractionAutoResolution(
+          String sessionId, String interactionId) =>
+      sendCommand(sessionId, 'snoozeInteractionAutoResolution', {
+        'interactionId': interactionId,
+      });
+
+  /// Cancels a background work item (terminal / subagent banner ✕).
+  Future<dynamic> cancelBackgroundWork(String sessionId, String workId) =>
+      sendCommand(sessionId, 'cancelBackgroundWork', {'workId': workId});
+
+  /// Deletes the whole session (chat「更多」menu, confirm first).
+  Future<dynamic> deleteSession(String sessionId) =>
+      sendCommand(sessionId, 'deleteSession', {});
+
+  /// Renames the session via the envelope (zcode-task.renameTask is the
+  /// task-list twin of the same operation).
+  Future<dynamic> renameSession(String sessionId, String title) =>
+      sendCommand(sessionId, 'renameSession', {'title': title});
+
+  /// sendText delivery semantics: 'startNow' | 'queue' | 'guide' (web
+  /// composer ⌘+Enter behavior, driven by zcodeInteractionBehavior).
+  Future<dynamic> sendTextWithDelivery(
+    String sessionId,
+    String text, {
+    required String requestedDelivery,
+    String? heldQueueDisposition,
+    List<String>? expectedHeldQueueItemIds,
+  }) => sendCommand(sessionId, 'sendText', {
+    'text': text,
+    'requestedDelivery': requestedDelivery,
+    if (heldQueueDisposition != null)
+      'heldQueueDisposition': heldQueueDisposition,
+    if (expectedHeldQueueItemIds != null &&
+        expectedHeldQueueItemIds.isNotEmpty)
+      'expectedHeldQueueItemIds': expectedHeldQueueItemIds,
+  });
+
   Future<dynamic> forkAssistant(
     String sessionId,
     Map<String, dynamic> target,

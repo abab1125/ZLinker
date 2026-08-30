@@ -19,6 +19,7 @@ class FakeDeviceSession extends DeviceSession {
     List<Map<String, dynamic>> workspaces = const [],
     this.relayTasks = const [],
     this._chatRows = const [],
+    this.snapshotExtra = const {},
     this.channelHandler,
   }) : status = DeviceStatus.connected,
        sessions = SessionsIndexState(),
@@ -41,6 +42,10 @@ class FakeDeviceSession extends DeviceSession {
   List<Map<String, dynamic>> relayTasks;
   Map<String, dynamic>? _active;
   final List<Map<String, dynamic>> _chatRows;
+
+  /// Extra snapshot fields (queue / pendingInteractions) merged into the
+  /// seeded chat feed.
+  final Map<String, dynamic> snapshotExtra;
 
   /// Optional local answers for channel RPCs; every call is recorded in
   /// [channelCalls] regardless.
@@ -108,6 +113,7 @@ class FakeDeviceSession extends DeviceSession {
             'logEpoch': 'e1',
             'revision': 1,
             'rows': {'window': _chatRows, 'totalCount': _chatRows.length},
+            ...snapshotExtra,
           },
         },
       }, onGap: () {});

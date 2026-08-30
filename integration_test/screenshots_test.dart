@@ -672,18 +672,96 @@ void main() {
     await _capturePhone(tester, '02d-archive$_suffix');
     sessionRich.dispose();
 
-    // 3. Conversation
+    // 3. Conversation (phone-framed like the other parity captures)
     await tester.pumpWidget(_wrap(
-      ChatPage(
-        gateway: session,
-        sessionId: 'sess_shot_1',
-        title: _chatTitle,
+      Center(
+        child: RepaintBoundary(
+          key: _phoneKey,
+          child: SizedBox(
+            width: 400,
+            height: 850,
+            child: Navigator(
+              key: UniqueKey(),
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => ChatPage(
+                  gateway: session,
+                  sessionId: 'sess_shot_1',
+                  title: _chatTitle,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       theme,
       ui,
     ));
     await tester.pump(const Duration(milliseconds: 1500));
-    await _capture(tester, '03-chat$_suffix');
+    await _capturePhone(tester, '03-chat$_suffix');
+
+    // 3a. Chat parity captures: held queue with reorder buttons, a pending
+    // interaction with the snooze action.
+    final sessionQueue = FakeDeviceSession(
+      deviceId: deviceA.id,
+      params: deviceA.params!,
+      entries: _sessions,
+      workspaces: _workspacesRich,
+      chatRows: _chatRows,
+      snapshotExtra: {
+        'queue': {
+          'autoDrain': true,
+          'items': [
+            {'queueItemId': 'q1', 'text': _isEn ? 'Summarize the diff' : '总结这份 Diff'},
+            {
+              'queueItemId': 'q2',
+              'text': _isEn ? 'Draft the release notes' : '起草发布说明',
+            },
+          ],
+        },
+        'pendingInteractions': [
+          {
+            'interactionId': 'i1',
+            'payload': {
+              'kind': 'permission',
+              'toolName': _isEn ? 'terminal' : '终端',
+              'summary': _isEn
+                  ? 'rm -rf build/ && flutter build apk'
+                  : 'rm -rf build/ && flutter build apk',
+              'options': [
+                {'optionId': 'allow', 'label': _isEn ? 'Allow once' : '允许一次'},
+                {'optionId': 'deny', 'label': _isEn ? 'Deny' : '拒绝'},
+              ],
+            },
+          },
+        ],
+      },
+    );
+    await tester.pumpWidget(_wrap(
+      Center(
+        child: RepaintBoundary(
+          key: _phoneKey,
+          child: SizedBox(
+            width: 400,
+            height: 850,
+            child: Navigator(
+              key: UniqueKey(),
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => ChatPage(
+                  gateway: sessionQueue,
+                  sessionId: 'sess_shot_1',
+                  title: _chatTitle,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      theme,
+      ui,
+    ));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await _capturePhone(tester, '03a-chat-queue$_suffix');
+    sessionQueue.dispose();
 
     // 4. Automations (server-side cron list with seeded items). Prewarm the
     // automation port so the pane's in-build fetch hits an already-resolved

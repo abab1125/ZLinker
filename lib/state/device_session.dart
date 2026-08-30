@@ -251,6 +251,20 @@ abstract interface class ChatGateway implements Listenable {
   );
   Future<dynamic> deleteQueueItem(String sessionId, String queueItemId);
   Future<dynamic> setAutoDrain(String sessionId, bool autoDrain);
+  Future<dynamic> reorderQueueItem(
+    String sessionId,
+    String queueItemId,
+    String? beforeQueueItemId,
+  );
+
+  /// Defers the interaction auto-resolution (「提问自动继续」timer).
+  Future<dynamic> snoozeInteraction(String sessionId, String interactionId);
+
+  /// Cancels a background work item (terminal / subagent banner ✕).
+  Future<dynamic> cancelBackgroundWork(String sessionId, String workId);
+
+  /// Deletes the whole session (confirm in the UI first).
+  Future<dynamic> deleteSession(String sessionId);
   Future<dynamic> plans(String sessionId);
   Future<dynamic> fileChanges(
     String sessionId, {
@@ -267,6 +281,12 @@ abstract interface class ChatGateway implements Listenable {
     String sessionId,
     Map<String, dynamic> target,
   );
+
+  /// Precheck for a rewind (conversationFileRewindPreviewV4).
+  Future<dynamic> fileRewindPreview(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  });
 }
 
 /// One native protocol connection to one device. Owns the full stack
@@ -1204,6 +1224,25 @@ class DeviceSession extends ChangeNotifier
       _requireConversation.setAutoDrain(sessionId, autoDrain);
 
   @override
+  Future<dynamic> reorderQueueItem(
+          String sessionId, String queueItemId, String? beforeQueueItemId) =>
+      _requireConversation.reorderQueueItem(
+          sessionId, queueItemId, beforeQueueItemId);
+
+  @override
+  Future<dynamic> snoozeInteraction(String sessionId, String interactionId) =>
+      _requireConversation.snoozeInteractionAutoResolution(
+          sessionId, interactionId);
+
+  @override
+  Future<dynamic> cancelBackgroundWork(String sessionId, String workId) =>
+      _requireConversation.cancelBackgroundWork(sessionId, workId);
+
+  @override
+  Future<dynamic> deleteSession(String sessionId) =>
+      _requireConversation.deleteSession(sessionId);
+
+  @override
   Future<dynamic> plans(String sessionId) =>
       _requireConversation.plans(sessionId);
 
@@ -1235,6 +1274,12 @@ class DeviceSession extends ChangeNotifier
     String sessionId,
     Map<String, dynamic> target,
   ) => _requireConversation.applyFileRewind(sessionId, target);
+
+  @override
+  Future<dynamic> fileRewindPreview(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  }) => _requireConversation.fileRewindPreview(sessionId, target: target);
 
   /// Cleanly closes the connection so the in-app WebView (or another
   /// terminal) can take the slot without a KICK race. Callers reconnect

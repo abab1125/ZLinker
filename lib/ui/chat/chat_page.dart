@@ -729,7 +729,48 @@ class _ChatPageState extends State<ChatPage> {
         _showUsageSheet();
       case 'plans':
         _showPlansSheet();
+      case 'deleteSession':
+        if (sessionId != null) {
+          _deleteSession(sessionId);
+        }
     }
+  }
+
+  /// Official delete confirmation (confirmDialog.taskDelete*): the session
+  /// is removed from the workspace and records cannot be recovered. Pops
+  /// the chat page after success.
+  Future<void> _deleteSession(String sessionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(tr(dialogCtx, 'tasks.action.deleteTitle')),
+        content: Text(
+          trP(dialogCtx, 'tasks.action.deleteDesc', [
+            widget.title.isNotEmpty ? widget.title : sessionId,
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: Text(tr(dialogCtx, 'common.cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogCtx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: Text(tr(dialogCtx, 'tasks.action.delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(
+      tr(context, 'tasks.opFailed'),
+      () => widget.gateway.deleteSession(sessionId),
+    );
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   /// Official web order: pin toggle / rename / archive / unread, then the
@@ -751,6 +792,8 @@ class _ChatPageState extends State<ChatPage> {
     _menuItem('compact', Icons.compress, 'chat.more.compact'),
     _menuItem('usage', Icons.query_stats_outlined, 'chat.more.usage'),
     _menuItem('plans', Icons.checklist_outlined, 'chat.more.plans'),
+    const PopupMenuDivider(),
+    _menuItem('deleteSession', Icons.delete_outline, 'tasks.action.delete'),
   ];
 
   /// Official content column: messages cap at 848px, the composer at 864px,
@@ -984,7 +1027,10 @@ class _ChatPageState extends State<ChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _GoalBanner(state: state),
-                  _BackgroundWorksBar(state: state),
+                  _BackgroundWorksBar(
+                    state: state,
+                    gateway: widget.gateway,
+                  ),
                   _QueueBar(state: state, gateway: widget.gateway),
                   _PendingInteractions(state: state, gateway: widget.gateway),
                 ],
@@ -2560,13 +2606,7 @@ class _FileChangesBar extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () => onAction(
-              tr(context, 'chat.action.rewind.failed'),
-              () => gateway.applyFileRewind(sessionId, {
-                'rowId': row['rowId'],
-                'entityId': ?row['entityId'],
-              }),
-            ),
+            onPressed: () => _rewindWithPreview(context),
             child: Text(
               tr(context, 'chat.files.undo'),
               style: const TextStyle(fontSize: 12),
@@ -2575,6 +2615,123 @@ class _FileChangesBar extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Web rewind precheck: conversationFileRewindPreviewV4 runs before any
+  /// write. The dialog reports what the desktop returned; a preview that
+  /// reports unrewritable files (or errors) blocks the rewind entirely.
+  Future<void> _rewindWithPreview(BuildContext context) async {
+    final target = {
+      'rowId': row['rowId'],
+      'entityId': ?row['entityId'],
+    };
+    final action = onAction(
+      tr(context, 'chat.action.rewind.failed'),
+      () async {
+        final preview = await gateway.fileRewindPreview(sessionId,
+            target: target);
+        if (!context.mounted) return null;
+        final ok = await _showPreviewDialog(context, preview);
+        if (ok != true) return null;
+        return gateway.applyFileRewind(sessionId, target);
+      },
+    );
+    await action;
+  }
+
+  Future<bool?> _showPreviewDialog(
+    BuildContext context,
+    dynamic preview,
+  ) {
+    final files = _previewFiles(preview);
+    final blocked = preview == null ||
+        (preview is Map && preview['error'] != null) ||
+        (preview is Map &&
+            (preview['canRewind'] == false ||
+                preview['rewritable'] == false));
+    return showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(
+          tr(dialogCtx,
+              blocked ? 'chat.rewind.unsafeTitle' : 'chat.rewind.safeTitle'),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: files.isEmpty && !blocked
+              ? Text(tr(dialogCtx, 'chat.rewind.checking'),
+                  style: TextStyle(
+                      fontSize: 13, color: ZInk.soft(dialogCtx)))
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (blocked)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          tr(dialogCtx, 'chat.rewind.cannotApply'),
+                          style: TextStyle(
+                              fontSize: 13, color: ZColors.danger),
+                        ),
+                      ),
+                    for (final f in files.take(12))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          f,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: ZInk.soft(dialogCtx)),
+                        ),
+                      ),
+                    if (files.length > 12)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '+${files.length - 12}',
+                          style: TextStyle(
+                              fontSize: 12, color: ZInk.muted(dialogCtx)),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: Text(tr(dialogCtx, 'common.cancel')),
+          ),
+          if (!blocked)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: Text(tr(dialogCtx, 'chat.rewind.confirm')),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Best-effort file list extraction from the preview payload — field
+  /// names beyond the confirmed endpoint are not guessed further; an empty
+  /// list simply renders the text-only dialog.
+  static List<String> _previewFiles(dynamic preview) {
+    if (preview is! Map) return const [];
+    for (final key in const ['files', 'rewritableFiles', 'entries']) {
+      final v = preview[key];
+      if (v is List) {
+        return [
+          for (final e in v)
+            e is Map
+                ? '${e['path'] ?? e['filePath'] ?? e['name'] ?? ''}'
+                : '$e',
+        ].where((f) => f.isNotEmpty).toList();
+      }
+    }
+    return const [];
   }
 }
 
@@ -2790,8 +2947,9 @@ class _GoalBanner extends StatelessWidget {
 
 class _BackgroundWorksBar extends StatelessWidget {
   final ConversationState state;
+  final ChatGateway gateway;
 
-  const _BackgroundWorksBar({required this.state});
+  const _BackgroundWorksBar({required this.state, required this.gateway});
 
   @override
   Widget build(BuildContext context) {
@@ -2799,9 +2957,10 @@ class _BackgroundWorksBar extends StatelessWidget {
         .where((w) => w['status'] == 'running' && w['endedAt'] == null)
         .toList();
     if (works.isEmpty) return const SizedBox.shrink();
+    final sessionId = state.snapshot?['sessionId'] as String? ?? '';
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: ZInk.tile(context),
         borderRadius: BorderRadius.circular(12),
@@ -2825,6 +2984,18 @@ class _BackgroundWorksBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          for (final w in works)
+            IconButton(
+              icon: Icon(Icons.close, size: 14, color: ZInk.muted(context)),
+              tooltip: tr(context, 'chat.bgWorks.cancel'),
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                final workId =
+                    "${w['workId'] ?? w['id'] ?? ''}";
+                if (workId.isEmpty) return;
+                gateway.cancelBackgroundWork(sessionId, workId);
+              },
+            ),
         ],
       ),
     );
@@ -2880,24 +3051,37 @@ class _QueueBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          for (final item in items)
+          for (var i = 0; i < items.length; i++)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      '${item['text'] ?? ''}',
+                      '${items[i]['text'] ?? ''}',
                       style: TextStyle(fontSize: 12, color: ZInk.soft(context)),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   _QueueAction(
+                    icon: Icons.arrow_upward,
+                    tooltip: tr(context, 'chat.queue.moveUp'),
+                    enabled: i > 0,
+                    onTap: () => _reorder(context, sessionId, items, i, i - 1),
+                  ),
+                  _QueueAction(
+                    icon: Icons.arrow_downward,
+                    tooltip: tr(context, 'chat.queue.moveDown'),
+                    enabled: i < items.length - 1,
+                    onTap: () => _reorder(context, sessionId, items, i,
+                        i + 2 >= items.length ? null : i + 2),
+                  ),
+                  _QueueAction(
                     icon: Icons.play_arrow,
                     tooltip: tr(context, 'chat.queue.sendNow'),
                     onTap: () {
-                      final id = '${item['queueItemId']}';
+                      final id = '${items[i]['queueItemId']}';
                       state.optimisticRemoveQueueItem(id);
                       gateway.sendQueuedNow(sessionId, id);
                     },
@@ -2905,19 +3089,20 @@ class _QueueBar extends StatelessWidget {
                   _QueueAction(
                     icon: Icons.edit_outlined,
                     tooltip: tr(context, 'chat.queue.edit'),
-                    onTap: () => _edit(context, sessionId, item),
+                    onTap: () => _edit(context, sessionId, items[i]),
                   ),
                   _QueueAction(
                     icon: Icons.close,
                     tooltip: tr(context, 'devices.menu.delete'),
                     onTap: () async {
-                      final id = '${item['queueItemId']}';
+                      final id = '${items[i]['queueItemId']}';
                       final confirmed = await showDialog<bool>(
                         context: context,
+                        useRootNavigator: false,
                         builder: (context) => AlertDialog(
                           title: Text(tr(context, 'chat.queue.delete.title')),
                           content: Text(
-                            '${item['text'] ?? ''}',
+                            '${items[i]['text'] ?? ''}',
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -2949,6 +3134,33 @@ class _QueueBar extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Web drag-to-reorder parity: the same `reorderQueueItem
+  /// {queueItemId, beforeQueueItemId|null}` command, driven by move
+  /// buttons (rows are too narrow for a drag handle on phones).
+  /// [targetIndex] is the index the item should occupy after the move;
+  /// `null` moves it to the end.
+  void _reorder(
+    BuildContext context,
+    String sessionId,
+    List<Map<String, dynamic>> items,
+    int index,
+    int? targetIndex,
+  ) {
+    if (targetIndex != null && (targetIndex < 0 || targetIndex > items.length)) {
+      return;
+    }
+    final id = '${items[index]['queueItemId']}';
+    final String? beforeId;
+    if (targetIndex == null) {
+      beforeId = null;
+    } else if (targetIndex == items.length) {
+      beforeId = null;
+    } else {
+      beforeId = '${items[targetIndex]['queueItemId']}';
+    }
+    gateway.reorderQueueItem(sessionId, id, beforeId);
   }
 
   Future<void> _edit(
@@ -3002,19 +3214,25 @@ class _QueueAction extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final bool enabled;
 
   const _QueueAction({
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, size: 16, color: ZInk.muted(context)),
+      icon: Icon(
+        icon,
+        size: 16,
+        color: enabled ? ZInk.muted(context) : ZInk.ghost(context),
+      ),
       tooltip: tooltip,
-      onPressed: onTap,
+      onPressed: enabled ? onTap : null,
       visualDensity: VisualDensity.compact,
     );
   }
@@ -3098,6 +3316,10 @@ class _PendingInteractions extends StatelessWidget {
                   action: action,
                   content: content,
                 ),
+            onSnooze: () => gateway.snoozeInteraction(
+                  sessionId,
+                  interaction['interactionId'] as String? ?? '',
+                ),
           ),
       ],
     );
@@ -3114,7 +3336,15 @@ class _InteractionCard extends StatefulWidget {
   })
   onResolve;
 
-  const _InteractionCard({required this.interaction, required this.onResolve});
+  /// Defers the auto-resolution timer (web snoozeInteractionAutoResolution,
+  /// desktop setting「提问自动继续」).
+  final Future<void> Function()? onSnooze;
+
+  const _InteractionCard({
+    required this.interaction,
+    required this.onResolve,
+    this.onSnooze,
+  });
 
   @override
   State<_InteractionCard> createState() => _InteractionCardState();
@@ -3265,6 +3495,41 @@ class _InteractionCardState extends State<_InteractionCard> {
                             _resolve(freeText: _freeTextController.text.trim()),
                 ),
               ],
+            ),
+          if (widget.onSnooze != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: _busy ? null : () => widget.onSnooze!(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.snooze_outlined,
+                          size: 12,
+                          color: ZInk.muted(context),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          tr(context, 'chat.interact.snooze'),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: ZInk.muted(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
         ],
       ),

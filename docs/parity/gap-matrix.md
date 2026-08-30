@@ -157,3 +157,15 @@ devices_page(多设备管理/剪贴板检测/排序置顶)、qr_scan_page(扫码
 7. `model-provider.onDidChangeProviderRegistry` / `getEndpointSuggestions` / `getModelsByEndpoint` / `refreshPresetProviders`。
 8. `conversationFileRewindPreviewV4` 接 UI。
 9. setting channel `get/update`(范围待定)。
+
+## 批次②实现记录(2026-08-30,chat_page,代码完成+ZLinker 侧截图验收)
+
+- **C1**:`reorderQueueItem`(CAS 命令已在信封集合)补方法体+Gateway 暴露;队列条每行加 上移/下移(同一协议命令,web 为拖拽,行内窄条以按钮代拖拽 ⚠️);行为测试断言 web 参数形状 `{queueItemId, beforeQueueItemId|null}`。
+- **C2**:`snoozeInteractionAutoResolution` 接入交互卡「稍后自动继续」(时钟图标+统一灰,InkWell 实现)。
+- **C3**:`setFollowupMode` 此前已有;`sendText.requestedDelivery` 补 `sendTextWithDelivery`(UI 语义由既有队列确认弹窗承载,⌘Enter 语义在触屏无对应键 ⚠️)。
+- **C4**:`cancelBackgroundWork` + 后台横幅逐项 ✕。
+- **C5**:`deleteSession` + 更多菜单删除项 + 官方确认弹窗文案,成功后 pop 返回列表。
+- **C7**:rewind 预检接 UI —— 撤销前先 `conversationFileRewindPreviewV4`,对话框分安全/不可撤销(阻断)两态,尽力提取文件列表(未确认字段不猜,缺失时纯文案)。
+- 测试:242 全绿;截图 `docs/screenshots/parity/chat/zlinker-chat-{default,queue-interaction}-{zh,en}.png`。
+- 验收:judge 复验确认全部功能项到位(队列五键+边界禁用、amber 权限卡+单色 snooze、composer 完整、en↔zh 对应)。两条残留意见均为判据书写问题:①取景实为 400×681@2x(Windows 测试窗口高度所限,与批次①已 pass 截图一致,prompt 中误写 1:2.1);②en 图第三条 bullet 在视口边缘截断为长内容自然滚动裁切。裁定不构成产品缺陷。
+- 修复过程发现:pumpWidget 换入同构子树(相同 GlobalKey+Navigator)时 Element 复用导致 Navigator 保留旧路由 —— 聊天捕获的 Navigator 需 UniqueKey 强制重建(管线注释已记)。

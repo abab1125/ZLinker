@@ -124,6 +124,33 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   void sendViewState({String? taskId}) {}
 
   @override
+  Future<dynamic> reorderQueueItem(
+    String sessionId,
+    String queueItemId,
+    String? beforeQueueItemId,
+  ) async => _rec('reorderQueueItem', [sessionId, queueItemId,
+        beforeQueueItemId]);
+
+  @override
+  Future<dynamic> snoozeInteraction(String sessionId, String interactionId) =>
+      _rec('snoozeInteraction', [sessionId, interactionId]);
+
+  @override
+  Future<dynamic> cancelBackgroundWork(String sessionId, String workId) =>
+      _rec('cancelBackgroundWork', [sessionId, workId]);
+
+  @override
+  Future<dynamic> deleteSession(String sessionId) =>
+      _rec('deleteSession', [sessionId]);
+
+  @override
+  Future<dynamic> fileRewindPreview(
+    String sessionId, {
+    required Map<String, dynamic> target,
+  }) async =>
+      _rec('fileRewindPreview', [sessionId, target]);
+
+  @override
   Future<String> createSession(
     String workspaceId, {
     String? firstText,
@@ -406,6 +433,44 @@ void main() {
         .toList()
         .single;
     expect(call.$2, ['s1', 'q1']);
+  });
+
+  testWidgets('queue bar reorder issues reorderQueueItem with web shape',
+      (tester) async {
+    final gateway = FakeChatGateway();
+    gateway.snapshotExtra = {
+      'queue': {
+        'autoDrain': true,
+        'items': [
+          {'queueItemId': 'q1', 'text': '排队消息 A'},
+          {'queueItemId': 'q2', 'text': '排队消息 B'},
+        ],
+      },
+    };
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
+    gateway.feedSnapshot([
+      {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
+    ]);
+    await tester.pumpAndSettle();
+
+    // move q2 up: it should be inserted before q1
+    await tester.tap(find.byTooltip('上移').last);
+    await tester.pump();
+    final up = gateway.calls
+        .where((c) => c.$1 == 'reorderQueueItem')
+        .toList()
+        .single;
+    expect(up.$2, ['s1', 'q2', 'q1']);
+
+    // move q1 down with nothing after q2 → beforeQueueItemId null (end)
+    await tester.tap(find.byTooltip('下移').first);
+    await tester.pump();
+    final downs = gateway.calls
+        .where((c) => c.$1 == 'reorderQueueItem')
+        .toList();
+    expect(downs.last.$2, ['s1', 'q1', null]);
   });
 
   testWidgets('draft mode: first send issues createSession with firstText', (
