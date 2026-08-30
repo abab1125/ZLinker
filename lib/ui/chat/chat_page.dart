@@ -1253,7 +1253,6 @@ String? businessErrorCopy(String errorText, String Function() retryLater) {
   final m = RegExp(r'\b(1006|1005|3006|3001|3007|3008|3009|3010|3002|2007|429)\b')
       .firstMatch(errorText);
   if (m == null) return null;
-  final key = 'zcode.err.${m.group(1)}';
   final copy = {
     '1006': '登录状态已失效，请重新登录后再试。',
     '1005': '免费额度已用完，请升级套餐或稍后再试。',
