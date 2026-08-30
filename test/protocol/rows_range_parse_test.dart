@@ -15,7 +15,6 @@ void main() {
       // firstRowId intentionally absent unless the test passes it — the
       // live snapshot is NOT guaranteed to carry it (web pages on
       // window[0].rowId instead).
-      ?if (!identical(firstRowId, _sentinel)) 'firstRowId': firstRowId,
     };
     state.applyFrame({
       'toSeq': 1,
