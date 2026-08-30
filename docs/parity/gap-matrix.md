@@ -191,3 +191,11 @@ devices_page(多设备管理/剪贴板检测/排序置顶)、qr_scan_page(扫码
 - **S2/S3**:本机偏好与检查更新为 ZLinker 自有能力,不变。
 - 截图 `docs/screenshots/parity/desktop_settings/`(zh/en);自查通过(结构简单:radio+switch+chips,与源码确认的 key 一一对应;judge 省略以节省预算,如实记录)。
 - ⚠️ 已知差异:web 的桌面设置是 1692-key 全量镜像,ZLinker 只暴露远控有意义的两个域;web 无移动端设置入口(ZLinker 为能力补全)。
+
+## 工具行呈现批次实现记录(2026-08-30 续)
+
+- **askUserQuestion**(`41b20d3`):工具摘要新增分支,官方文案 正在询问/已询问 · N 个问题/未回答已自动继续(计数取自输入 JSON 的 questions 数组)。
+- **taskOutput/taskStop/sendMessage 文案族**(`f88c367`):按行状态机映射官方 19 条 zh/en 文案(任务输出 · 已获取 / 停止任务 · 正在停止任务 / 发送消息 · 已发送 等)。
+- **终端分组聚合**(`53d8967`):连续 2+ 条执行族工具行折叠为「终端 · N 个命令 · 失败/停止计数 · 首条命令预览」,点击展开;`assistantTurnParts` 新增 rowGroup 部件;3 个行为测试,245 全绿。
+- **业务错误码翻译**:发送/命令失败的错误文本含业务码(1006/1005/3006/3001/3007/3008-3010/3002/2007/429)时,以官方文案替代原始传输错误(web `zcode.error.providerBusiness.*` 对齐;web 按 code+message 关键词分类成 升级/稍后重试 动作桶,横幅动作按钮待真实会话验证后跟进)。
+- **裁剪加载(snapshotRefs)→ ⚠️ 跳过(如实记录)**:schema 已挖到(`toolCall.snapshotRefs: [{field: input|output|raw, refId, hash, fullBytes, previewBytes}]`,notice 文案「该工具有 N 个字段被裁剪…」),但当前 web 构建中 `getTaskSnapshotToolCallsSlice` 只有离线 stub(返回 null),notice 组件在无 loader 时整块不渲染 —— **web 自身无可见行为可对齐**,实现它反而偏离 web。待 web 实装后跟进(schema 随本记录留存)。
