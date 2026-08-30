@@ -184,3 +184,10 @@ devices_page(多设备管理/剪贴板检测/排序置顶)、qr_scan_page(扫码
 - **chat 基准**(`web-chat-default.png` / `web-chat-more-menu.png`,真实会话「克隆 ZLinker GitHub 仓库」):顶栏「任务会话」+标题+…菜单、更改 +200 -0 胶囊、用户气泡(复制/编辑)、「已工作 44 秒」、assistant Markdown(代码 pill/列表)、反馈行(复制/赞/踩/分叉)+时间、composer(占位符/「1 次更改待确认」chip/附件/权限/发送)——与 ZLinker chat_default 结构逐项对应。
 - **会话菜单对照**:web 列出 置顶任务/重命名任务/归档任务/标记为未读 | 复制路径/复制任务路径/复制日志路径/复制会话 ID | 查看调用轨迹/反馈问题。ZLinker 已覆盖 置顶/重命名/归档/未读/复制路径/复制 ID(+链接);⚠️ 已知差异:web 多 复制日志路径/查看调用轨迹/反馈问题(zlinker 无);zlinker 多 删除会话/用量/Plans(deleteSession 协议存在但 web 菜单未列,zlinker 作为能力补全保留)。
 - **用量/供应商**:web 移动端(≤400px)无设置入口 —— usage/providers 属桌面布局功能,移动端无对应页面可对照 ⚠️(ZLinker 移动端提供这两个页面是超出 web 移动版的能力补全,数据面协议一致已由源码清单背书)。
+
+## 批次④实现记录(2026-08-30,settings 最小面,代码完成+截图)
+
+- **S1**:`setting.get/update` 打通,新增 桌面设置 页(任务列表溢出菜单入口),只渲染源码确认的 key:交互行为 `zcodeInteractionBehavior`(排队/引导 radio)、任务自动归档 `taskAutoArchiveEnabled` 开关 + `taskAutoArchiveOlderThanDays` chips(3/7/14/30 天);乐观合并+保存失败 SnackBar。其余 update-able key(终端/代理/关闭到托盘等)手机无意义,不渲染。
+- **S2/S3**:本机偏好与检查更新为 ZLinker 自有能力,不变。
+- 截图 `docs/screenshots/parity/desktop_settings/`(zh/en);自查通过(结构简单:radio+switch+chips,与源码确认的 key 一一对应;judge 省略以节省预算,如实记录)。
+- ⚠️ 已知差异:web 的桌面设置是 1692-key 全量镜像,ZLinker 只暴露远控有意义的两个域;web 无移动端设置入口(ZLinker 为能力补全)。

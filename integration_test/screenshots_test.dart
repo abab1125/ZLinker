@@ -27,6 +27,7 @@ import 'package:zlinker/state/device_store.dart';
 import 'package:zlinker/state/scheduled_store.dart';
 import 'package:zlinker/ui/automations_page.dart';
 import 'package:zlinker/ui/chat/chat_page.dart';
+import 'package:zlinker/ui/desktop_settings_page.dart';
 import 'package:zlinker/ui/device_usage_page.dart';
 import 'package:zlinker/ui/model_providers_page.dart';
 import 'package:zlinker/ui/devices_page.dart';
@@ -927,5 +928,43 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1200));
     await _capturePhone(tester, '07-providers$_suffix');
     sessionProviders.dispose();
+
+    // 8. Desktop settings (setting.get with mock data).
+    final sessionDeskSet = FakeDeviceSession(
+      deviceId: deviceA.id,
+      params: deviceA.params!,
+      channelHandler: (channel, method, args) async {
+        if (channel == 'setting' && method == 'get') {
+          return {
+            'zcodeInteractionBehavior': 'queue',
+            'taskAutoArchiveEnabled': true,
+            'taskAutoArchiveOlderThanDays': 14,
+          };
+        }
+        return null;
+      },
+    );
+    await tester.pumpWidget(_wrap(
+      Center(
+        child: RepaintBoundary(
+          key: _phoneKey,
+          child: SizedBox(
+            width: 400,
+            height: 850,
+            child: Navigator(
+              key: UniqueKey(),
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => DesktopSettingsPage(session: sessionDeskSet),
+              ),
+            ),
+          ),
+        ),
+      ),
+      theme,
+      ui,
+    ));
+    await tester.pump(const Duration(milliseconds: 1200));
+    await _capturePhone(tester, '08-desktop-settings$_suffix');
+    sessionDeskSet.dispose();
   });
 }

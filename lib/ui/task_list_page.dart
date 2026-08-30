@@ -8,6 +8,7 @@ import '../state/device_session.dart';
 import '../state/device_store.dart';
 import 'automations_page.dart';
 import 'chat/chat_page.dart';
+import 'desktop_settings_page.dart';
 import 'device_usage_page.dart';
 import 'model_providers_page.dart';
 import 'off_peak_page.dart';
@@ -2030,6 +2031,11 @@ class _TaskListPageState extends State<TaskListPage> {
     switch (v) {
       case 'archive':
         setState(() => _showArchived = !_showArchived);
+      case 'deskSet':
+        if (session == null) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DesktopSettingsPage(session: session),
+        ));
       case 'usage':
         if (session == null) return;
         Navigator.of(context).push(
