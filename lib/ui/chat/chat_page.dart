@@ -214,7 +214,8 @@ class _ChatPageState extends State<ChatPage> {
         _toast('$errorPrefix: ${res['reasonCode'] ?? res['status']}');
       }
     } catch (e) {
-      _toast('$errorPrefix: $e');
+      final business = businessErrorCopy('$e', () => tr(context, 'common.retryLater'));
+      _toast(business ?? '$errorPrefix: $e');
     }
   }
 
@@ -1242,6 +1243,34 @@ typedef AssistantPart = ({
   List<Map<String, dynamic>>? group,
   bool streaming,
 });
+
+/// Provider business-error translation (web `zcode.error.providerBusiness.*`):
+/// model-request failures carry a numeric code (1005 免费额度, 1006 登录失效,
+/// 3002/429 限流, 3006 模型不在范围, 3007 验证码, 3008-3010 系统繁忙, 2007 上游
+/// 不可用). When the failure text mentions one, show the official line
+/// instead of the raw transport error.
+String? businessErrorCopy(String errorText, String Function() retryLater) {
+  final m = RegExp(r'\b(1006|1005|3006|3001|3007|3008|3009|3010|3002|2007|429)\b')
+      .firstMatch(errorText);
+  if (m == null) return null;
+  final key = 'zcode.err.${m.group(1)}';
+  final copy = {
+    '1006': '登录状态已失效，请重新登录后再试。',
+    '1005': '免费额度已用完，请升级套餐或稍后再试。',
+    '3006': '当前模型不在你的套餐范围内，请更换模型。',
+    '3001': '请求参数无效，请重试或更换模型。',
+    '3007': '触发验证码校验，请在桌面端完成验证后重试。',
+    '3008': '系统繁忙，请稍后重试或升级套餐。',
+    '3009': '系统繁忙，请稍后重试或升级套餐。',
+    '3010': '系统繁忙，请稍后重试或升级套餐。',
+    '3002': '请求被限流，请稍后重试。',
+    '2007': '上游服务暂不可用，请稍后重试。',
+    '429': '请求被限流，请稍后重试。',
+  }[m.group(1)];
+  if (copy == null) return null;
+  // ignore: avoid_print
+  return '$copy (${retryLater.call()})';
+}
 
 /// Splits an assistant-turn group into ORDERED parts — consecutive
 /// assistantText rows merge into one text segment, while reasoning/tool/

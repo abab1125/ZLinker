@@ -277,6 +277,7 @@ const _zh = {
   'tasks.workspaceKind.conversation': '对话',
   'tasks.workspaceKind.remote': '远程',
   'common.cancel': '取消',
+  'common.retryLater': '稍后重试',
   'common.save': '保存',
   // ---- webRemoteControl failure states (official copy) ----
   'remote.failure.session-not-found': '当前 Web 远程控制链接已经失效，请回到桌面端重新开启一次。',
@@ -952,6 +953,7 @@ const _en = {
   'tasks.workspaceKind.conversation': 'Conversation',
   'tasks.workspaceKind.remote': 'Remote',
   'common.cancel': 'Cancel',
+  'common.retryLater': 'Retry later',
   'common.save': 'Save',
   // ---- webRemoteControl failure states (official copy) ----
   'remote.failure.session-not-found':
