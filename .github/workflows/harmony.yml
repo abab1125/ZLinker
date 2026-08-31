@@ -3,9 +3,13 @@
 #
 # Requirements handled here:
 # - SIG Flutter SDK cloned from gitcode (branch tracks Flutter 3.22.x)
-# - DevEco Command Line Tools (hvigor/ohpm/node) + HarmonyOS SDK installed
-#   via sdkmgr with -Duser.country=CN (GitHub runners default elsewhere)
+# - DevEco Command Line Tools 5.0.5 (hvigor/ohpm/node) from the Huawei
+#   Cloud mirror — bundles the HarmonyOS NEXT SDK, no login needed
 # - JDK 17
+# - A local storage proxy (scripts/ohos_storage_proxy.py): the SIG OBS
+#   bucket lacks some upstream host artifacts (e.g. linux-x64/font-subset.zip);
+#   the proxy fronts the bucket and falls back to storage.flutter-io.cn.
+#   FLUTTER_STORAGE_BASE_URL points at the proxy for all flutter steps.
 #
 # The HAP is UNSIGNED unless OHOS signing secrets are configured — signing
 # material (p12/cer/p7b from AGC) can be added later as repo secrets.
@@ -15,10 +19,10 @@ on:
   workflow_dispatch:
     inputs:
       cmdline_tools_url:
-        description: 'URL of command-line-tools-linux zip (override if default mirror is stale)'
+        description: 'URL of command-line-tools linux zip (override if the default mirror is stale)'
         required: false
         # Huawei Cloud mirror, no login required (verified 200 OK, ~3.0GB).
-        # Bundle includes the HarmonyOS NEXT SDK — no sdkmgr step needed.
+        # Bundles the HarmonyOS NEXT SDK — no sdkmgr step needed.
         default: 'https://repo.huaweicloud.com/harmonyos/ohpm/5.0.5/commandline-tools-linux-x64-5.0.5.310.zip'
   push:
     tags: ['v*']
@@ -28,7 +32,7 @@ env:
   FLUTTER_OHOS_REPO: 'https://gitcode.com/openharmony-sig/flutter_flutter.git'
   FLUTTER_OHOS_REPO_MIRROR: 'https://gitee.com/openharmony-sig/flutter_flutter.git'
   PUB_HOSTED_URL: https://pub.flutter-io.cn
-  FLUTTER_STORAGE_BASE_URL: https://flutter-ohos.obs.cn-south-1.myhuaweicloud.com
+  FLUTTER_STORAGE_BASE_URL: http://127.0.0.1:8899
 
 jobs:
   build-hap:
@@ -43,10 +47,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Start local storage proxy
+        # The SIG OBS bucket misses some upstream host artifacts
+        # (font-subset.zip 404s for every engine hash); front it with a
+        # fallback proxy so flutter's artifact bootstrap completes.
+        run: |
+          set -e
+          nohup python3 scripts/ohos_storage_proxy.py 8899 > /tmp/ohos-proxy.log 2>&1 &
+          sleep 2
+          curl -fsS -o /dev/null \
+            "http://127.0.0.1:8899/flutter_infra_release/flutter/f6344b75dcf861d8bf1f1322780b8811f982e31a/linux-x64/font-subset.zip" \
+            && echo "proxy fallback OK"
+
       - name: Install HarmonyOS command line tools
         working-directory: ${{ runner.temp }}
         env:
-          CMDLINE_TOOLS_URL: ${{ github.event.inputs.cmdline_tools_url || 'https://mirror.iscas.ac.cn/openharmony/sdk/public_devel/command-line-tools-linux-x64-5.0.13.100.zip' }}
+          CMDLINE_TOOLS_URL: ${{ github.event.inputs.cmdline_tools_url || 'https://repo.huaweicloud.com/harmonyos/ohpm/5.0.5/commandline-tools-linux-x64-5.0.5.310.zip' }}
         run: |
           set -e
           curl -fL --retry 3 -o clt.zip "$CMDLINE_TOOLS_URL"
@@ -54,17 +70,23 @@ jobs:
           # expected layout: $HOME/command-line-tools/{sdk,tools/ohpm,tools/hvigor,tools/node,...}
           ls "$HOME/command-line-tools"
 
-      - name: Install HarmonyOS SDK components
+      - name: Verify bundled SDK
         run: |
           set -e
           export TOOL_HOME="$HOME/command-line-tools"
           export DEVECO_SDK_HOME="$TOOL_HOME/sdk"
           export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Duser.country=CN"
-          chmod +x "$TOOL_HOME/sdkmanager/bin/sdkmgr" || true
-          # accept licenses and install the toolchains used by flutter build hap
-          "$TOOL_HOME/sdkmanager/bin/sdkmgr" install --accept-license \
-            toolchains:9 "OpenHarmony/toolchains:9" || \
-          echo "::warning::sdkmgr install failed — build may still succeed with bundled SDK"
+          # 5.x bundles the HarmonyOS NEXT SDK — verify presence, only fall
+          # back to sdkmgr for older CLT layouts.
+          if [ -d "$TOOL_HOME/sdk" ] && ls "$TOOL_HOME/sdk" | grep -q .; then
+            echo "bundled SDK present:"
+            ls "$TOOL_HOME/sdk"
+          else
+            chmod +x "$TOOL_HOME/sdkmanager/bin/sdkmgr" 2>/dev/null || true
+            "$TOOL_HOME/sdkmanager/bin/sdkmgr" install --accept-license \
+              toolchains:9 "OpenHarmony/toolchains:9" \
+              || echo "::warning::sdkmgr install failed — build may fail"
+          fi
 
       - name: Set up OpenHarmony Flutter SDK
         working-directory: ${{ runner.temp }}
@@ -74,8 +96,6 @@ jobs:
             || git clone --depth 1 -b "$FLUTTER_OHOS_BRANCH" "$FLUTTER_OHOS_REPO_MIRROR" flutter-ohos
           export PATH="$PWD/flutter-ohos/bin:$PATH"
           echo "$PWD/flutter-ohos/bin" >> "$GITHUB_PATH"
-          # ohos engine artifacts are fetched from this mirror on demand
-          echo "FLUTTER_STORAGE_BASE_URL=$FLUTTER_STORAGE_BASE_URL" >> "$GITHUB_ENV"
           flutter --version
 
       - name: Configure environment
@@ -90,25 +110,6 @@ jobs:
           # hvigor needs the Huawei npm registry for @ohos packages
           mkdir -p ~/.config 2>/dev/null || true
           printf 'registry=https://repo.harmonyos.com/npm/\n@ohos:registry=https://repo.harmonyos.com/npm/\n' > ~/.npmrc
-
-      - name: Pre-seed missing host artifact (font-subset)
-        # The SIG OBS bucket 404s ONLY font-subset.zip for this engine hash
-        # (every other artifact downloads fine); the identical upstream
-        # artifact exists on the official Flutter mirror. Extract it into
-        # bin/cache/artifacts/engine/linux-x64 so the composed-artifact
-        # validation finds font-subset and skips re-downloading.
-        run: |
-          set -e
-          ENGV="$RUNNER_TEMP/flutter-ohos/bin/internal/engine.version"
-          HASH=$(tr -d ' \r\n' < "$ENGV")
-          DEST="$RUNNER_TEMP/flutter-ohos/bin/cache/artifacts/engine/linux-x64"
-          mkdir -p "$DEST"
-          curl -fL --retry 3 \
-            "https://storage.flutter-io.cn/flutter_infra_release/flutter/$HASH/linux-x64/font-subset.zip" \
-            -o /tmp/font-subset.zip
-          unzip -o -q /tmp/font-subset.zip -d "$DEST"
-          chmod +x "$DEST/font-subset" || true
-          ls -la "$DEST" | head
 
       - name: Add ohos platform to the project
         run: |
