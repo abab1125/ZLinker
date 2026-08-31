@@ -114,6 +114,19 @@ jobs:
           for d in tools/ohpm/bin tools/hvigor/bin tools/node/bin; do
             echo "$TOOL_HOME/$d" >> "$GITHUB_PATH"
           done
+          # CLT layouts vary — locate hvigorw wherever it lives
+          HV=$(find "$TOOL_HOME" -name 'hvigorw' -o -name 'hvigorw.js' 2>/dev/null | head -1)
+          if [ -n "$HV" ]; then
+            HV_DIR=$(dirname "$HV")
+            case ":$PATH:" in
+              *":$HV_DIR:"*) ;;
+              *) echo "$HV_DIR" >> "$GITHUB_PATH"; export PATH="$HV_DIR:$PATH" ;;
+            esac
+            echo "hvigorw at $HV"
+          else
+            echo "::warning::hvigorw not found under $TOOL_HOME"
+            find "$TOOL_HOME" -maxdepth 3 -type d | head -20
+          fi
           # hvigor needs the Huawei npm registry for @ohos packages
           mkdir -p ~/.config 2>/dev/null || true
           printf 'registry=https://repo.harmonyos.com/npm/\n@ohos:registry=https://repo.harmonyos.com/npm/\n' > ~/.npmrc
