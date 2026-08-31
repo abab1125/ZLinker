@@ -127,9 +127,10 @@ jobs:
             echo "::warning::hvigorw not found under $TOOL_HOME"
             find "$TOOL_HOME" -maxdepth 3 -type d | head -20
           fi
-          # hvigor needs the Huawei npm registry for @ohos packages
+          # hvigor pulls @ohos/* from the Huawei registry; pnpm and the rest
+          # come from npmjs — the Huawei registry is @ohos-only (pnpm 404s).
           mkdir -p ~/.config 2>/dev/null || true
-          printf 'registry=https://repo.harmonyos.com/npm/\n@ohos:registry=https://repo.harmonyos.com/npm/\n' > ~/.npmrc
+          printf '@ohos:registry=https://repo.harmonyos.com/npm/\nregistry=https://registry.npmjs.org/\n' > ~/.npmrc
 
       - name: Add ohos platform to the project
         run: |
