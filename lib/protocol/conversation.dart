@@ -729,6 +729,10 @@ class ConversationTransport {
   /// client's `skillsService.list`). Skills are invoked in the composer as
   /// `$name`. Returns an empty list when the channel rejects or returns no
   /// skill data.
+  /// Last successful skills.list result (mention picker reads this
+  /// synchronously without a fresh RPC).
+  List<SkillEntry> lastSkills = const [];
+
   Future<List<SkillEntry>> skills() async {
     final res = await _channels.call(Channels.skills, 'list', [
       {
@@ -740,7 +744,7 @@ class ConversationTransport {
     ], timeout: const Duration(seconds: 20));
     final raw = res is List ? res : (res is Map ? res['skills'] : null);
     if (raw is! List) return const [];
-    return [
+    return lastSkills = [
       for (final item in raw.whereType<Map>())
         SkillEntry._(item.cast<String, dynamic>()),
     ].where((s) => s.name.isNotEmpty).toList();

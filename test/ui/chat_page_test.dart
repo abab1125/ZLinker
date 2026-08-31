@@ -150,6 +150,30 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   }) async =>
       _rec('fileRewindPreview', [sessionId, target]);
 
+  List<Map<String, dynamic>> mentionFilesResult = const [];
+  List<Map<String, dynamic>> mentionSubagentsResult = const [];
+  List<Map<String, dynamic>> mentionSkillsResult = const [];
+  List<({String id, String title})> mentionSessionsResult = const [];
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionFiles() async =>
+      mentionFilesResult;
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionSkills() async =>
+      mentionSkillsResult;
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionSubagents() async =>
+      mentionSubagentsResult;
+
+  @override
+  List<({String id, String title})> mentionSessions() =>
+      mentionSessionsResult;
+
+  @override
+  List<Map<String, dynamic>> mentionSkillsSync() => mentionSkillsResult;
+
   @override
   Future<String> createSession(
     String workspaceId, {
@@ -471,6 +495,55 @@ void main() {
         .where((c) => c.$1 == 'reorderQueueItem')
         .toList();
     expect(downs.last.$2, ['s1', 'q1', null]);
+  });
+
+  testWidgets('@ trigger opens mention picker; picking inserts reference',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final gateway = FakeChatGateway();
+    gateway.mentionFilesResult = [
+      {
+        'name': 'chat_page.dart',
+        'relativePath': 'lib/ui/chat/chat_page.dart',
+        'type': 'file',
+      },
+    ];
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
+    gateway.feedSnapshot([
+      {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
+    ]);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '看一下 @');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // category list appears (ensure the tile is on-screen first).
+    // Fixed pumps: the sheet's autofocus caret never lets pumpAndSettle
+    // settle.
+    expect(find.text('文件'), findsOneWidget);
+    await tester.ensureVisible(find.text('文件'));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.text('文件'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 150));
+    }
+
+    expect(find.text('chat_page.dart'), findsOneWidget);
+    await tester.tap(find.text('chat_page.dart'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 150));
+    }
+
+    final tf = tester.widget<TextField>(find.byType(TextField).first);
+    expect(tf.controller!.text, '看一下 @lib/ui/chat/chat_page.dart ');
   });
 
   testWidgets('draft mode: first send issues createSession with firstText', (

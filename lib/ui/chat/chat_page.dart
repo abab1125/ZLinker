@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../ui_settings.dart';
 import 'diff_view.dart';
 import 'markdown_view.dart';
+import 'mention_sheet.dart';
 
 /// Native chat view for one task (session), backed by Conversation V4 over
 /// [ChatGateway]. Draft mode (no [sessionId]): the first message issues
@@ -69,6 +70,11 @@ class _ChatPageState extends State<ChatPage> {
   bool _sending = false;
   bool _loadingOlder = false;
   bool _showSlash = false;
+
+  /// @-mention picker state (see _maybeOpenMentionPicker).
+  bool _mentionOpen = false;
+  int _mentionTriggerEnd = 0;
+  bool get _mentionEnabled => true;
   String? _progress;
   final List<_PendingFile> _pendingFiles = [];
   double? _uploadProgress;
@@ -111,6 +117,41 @@ class _ChatPageState extends State<ChatPage> {
       if (show != _showSlash && mounted) {
         setState(() => _showSlash = show);
       }
+      _maybeOpenMentionPicker(text);
+    });
+  }
+
+  /// Web @-mention parity: typing `@` at word start opens the mention
+  /// picker; the picked reference replaces the trigger and gets a trailing
+  /// space. Debounced by the sheet-open flag.
+  void _maybeOpenMentionPicker(String text) {
+    if (_mentionOpen || !_mentionEnabled) return;
+    final sel = _inputController.selection;
+    if (!sel.isValid) return;
+    final i = sel.baseOffset;
+    if (i < 1 || i > text.length) return;
+    if (text[i - 1] != '@') return;
+    const newlines = '\n';
+    final atWordStart =
+        i == 1 ||
+        text[i - 2] == ' ' ||
+        text[i - 2] == newlines;
+    if (!atWordStart) return;
+    _mentionOpen = true;
+    _mentionTriggerEnd = i;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final entry = await showMentionSheet(context, widget.gateway);
+      _mentionOpen = false;
+      if (!mounted || entry == null) return;
+      final start =
+          (_mentionTriggerEnd - 1).clamp(0, _inputController.text.length);
+      final next = applyMentionInsert(
+          _inputController.text, _mentionTriggerEnd, entry.insert);
+      _inputController.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(
+            offset: start + entry.insert.length + 2),
+      );
     });
   }
 
