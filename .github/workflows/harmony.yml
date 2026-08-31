@@ -152,6 +152,15 @@ jobs:
       - name: flutter doctor -v
         run: flutter doctor -v || true
 
+      - name: Prime hvigor (visible errors, warms npm deps)
+        # First hvigorw run resolves @ohos/hvigor from the Huawei npm
+        # registry; flutter's wrapper swallows its output, so run it once
+        # here where failures are visible.
+        run: |
+          cd ohos
+          hvigorw --mode module -p product=default assembleHap --no-daemon \
+            2>&1 | tail -60 || true
+
       - name: Build HAP (release)
         run: |
           set -e
