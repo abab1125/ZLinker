@@ -54,10 +54,17 @@ jobs:
         run: |
           set -e
           nohup python3 scripts/ohos_storage_proxy.py 8899 > /tmp/ohos-proxy.log 2>&1 &
-          sleep 2
-          curl -fsS -o /dev/null \
-            "http://127.0.0.1:8899/flutter_infra_release/flutter/f6344b75dcf861d8bf1f1322780b8811f982e31a/linux-x64/font-subset.zip" \
-            && echo "proxy fallback OK"
+          for i in $(seq 1 15); do
+            sleep 1
+            if curl -fsS -o /dev/null \
+              "http://127.0.0.1:8899/flutter_infra_release/flutter/f6344b75dcf861d8bf1f1322780b8811f982e31a/linux-x64/font-subset.zip"; then
+              echo "proxy fallback OK (after ${i}s)"
+              exit 0
+            fi
+          done
+          echo "::error::proxy did not come up — startup log follows"
+          cat /tmp/ohos-proxy.log
+          exit 1
 
       - name: Install HarmonyOS command line tools
         working-directory: ${{ runner.temp }}
