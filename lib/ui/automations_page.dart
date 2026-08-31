@@ -360,7 +360,7 @@ class _AutomationsPaneState extends State<AutomationsPane> {
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
         itemCount: cards.length,
-        separatorBuilder: (_, _) => const SizedBox.shrink(),
+        separatorBuilder: (context, index) => const SizedBox.shrink(),
         itemBuilder: (context, i) => cards[i],
       ),
     );

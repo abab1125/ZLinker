@@ -1601,7 +1601,7 @@ class _TaskListPageState extends State<TaskListPage> {
         ? tr(context, 'tasks.untitled')
         : entry.title;
     final subtitle = [
-      ?workspaceLabel,
+      if (workspaceLabel != null) workspaceLabel,
       relativeTimeShort(context, entry.lastActivityAt),
     ].join(' · ');
     final awaiting = entry.pendingInteraction != null;

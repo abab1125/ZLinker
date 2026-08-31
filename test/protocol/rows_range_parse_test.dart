@@ -11,7 +11,7 @@ void main() {
     final state = ConversationState();
     final rowsObj = <String, dynamic>{
       'window': window,
-      'totalCount': ?totalCount,
+      if (totalCount != null) 'totalCount': totalCount,
       // firstRowId intentionally absent unless the test passes it — the
       // live snapshot is NOT guaranteed to carry it (web pages on
       // window[0].rowId instead).

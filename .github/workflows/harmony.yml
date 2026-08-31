@@ -128,7 +128,13 @@ jobs:
           flutter create --platforms ohos --project-name zlinker .
 
       - name: Pub get
-        run: flutter pub get
+        run: |
+          set -e
+          # The committed lock pins newest packages (Dart >=3.12); the ohos
+          # fork ships Dart 3.4 — resolve fresh so pub picks compatible
+          # versions.
+          rm -f pubspec.lock
+          flutter pub get
 
       - name: flutter doctor -v
         run: flutter doctor -v || true

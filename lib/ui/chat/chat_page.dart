@@ -1133,7 +1133,9 @@ class _ChatPageState extends State<ChatPage> {
               onRemove: (i) => setState(() => _pendingFiles.removeAt(i)),
             ),
           AnimatedBuilder(
-            animation: Listenable.merge([?state, widget.gateway]),
+            animation: (state == null)
+              ? widget.gateway
+              : Listenable.merge([state, widget.gateway]),
             builder: (context, _) => _contentCol(
               _InputBar(
                 controller: _inputController,
@@ -1624,7 +1626,7 @@ class _RowWidget extends StatelessWidget {
 
   Map<String, dynamic> get _target => {
     'rowId': row['rowId'],
-    'entityId': ?row['entityId'],
+    if (row['entityId'] != null) 'entityId': row['entityId'],
   };
 
   void _showActions(BuildContext context) {
@@ -1957,7 +1959,7 @@ class _UserBubbleState extends State<_UserBubble> {
     try {
       await widget.gateway.editUserQuery(widget.sessionId, {
         'rowId': widget.row['rowId'],
-        'entityId': ?widget.row['entityId'],
+        if (widget.row['entityId'] != null) 'entityId': widget.row['entityId'],
       }, newText);
     } catch (e) {
       if (context.mounted) {
@@ -2115,7 +2117,7 @@ class _AssistantBubble extends StatelessWidget {
     state.optimisticRowUpdate(row['rowId'] as num?, {'feedback': value});
     gateway.setAssistantFeedback(sessionId, {
       'rowId': row['rowId'],
-      'entityId': ?row['entityId'],
+      if (row['entityId'] != null) 'entityId': row['entityId'],
     }, value);
   }
 
@@ -2175,7 +2177,7 @@ class _AssistantBubble extends StatelessWidget {
                     active: false,
                     onTap: () => gateway.forkAssistant(sessionId, {
                       'rowId': row['rowId'],
-                      'entityId': ?row['entityId'],
+                      if (row['entityId'] != null) 'entityId': row['entityId'],
                     }),
                   ),
                 ],
@@ -2402,7 +2404,7 @@ class _ToolCallTile extends StatelessWidget {
                   child: Image.memory(
                     base64Decode(image['base64'] as String),
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                   ),
                 ),
               ),
@@ -2847,7 +2849,7 @@ class _FileChangesBar extends StatelessWidget {
   Future<void> _rewindWithPreview(BuildContext context) async {
     final target = {
       'rowId': row['rowId'],
-      'entityId': ?row['entityId'],
+      if (row['entityId'] != null) 'entityId': row['entityId'],
     };
     final action = onAction(
       tr(context, 'chat.action.rewind.failed'),

@@ -191,7 +191,7 @@ class _ModelProvidersPageState extends State<ModelProvidersPage> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: _providers.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final p = _providers[index];
                       final enabled = p['enabled'] == true;

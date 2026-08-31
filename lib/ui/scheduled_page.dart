@@ -132,7 +132,7 @@ class _ScheduledPageState extends State<ScheduledPage> {
                 color: ZInk.muted(context)),
           ),
         ),
-        ?trailing,
+        if (trailing != null) trailing,
       ],
     );
   }
