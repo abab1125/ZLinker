@@ -79,5 +79,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
     print(f'ohos storage proxy on 127.0.0.1:{port} '
-          f'(primary={PRIMARY}, fallback={FALLBACK})', flush=True)
+          f'(primary={PRIMARY}, fallbacks={FALLBACKS})', flush=True)
     ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
