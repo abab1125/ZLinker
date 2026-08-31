@@ -90,11 +90,14 @@ class StallTimings {
   /// Delay between automatic retries after a retryable connect failure.
   final Duration retryBackoff;
 
+  /// Fork default: relaxed to ride out short relay blips without surfacing
+  /// a visible disconnect+rebuild. Matches v1.7.0's tolerance while keeping
+  /// the v1.8.0 wedged-link rebuild as a last resort.
   const StallTimings({
-    this.healthyWaitTimeout = const Duration(seconds: 12),
-    this.rpcTimeout = const Duration(seconds: 30),
+    this.healthyWaitTimeout = const Duration(seconds: 45),
+    this.rpcTimeout = const Duration(seconds: 60),
     this.dialTimeout = const Duration(seconds: 30),
-    this.listReadyTimeout = const Duration(seconds: 20),
+    this.listReadyTimeout = const Duration(seconds: 45),
     this.minRebuildInterval = const Duration(seconds: 30),
     this.retryBackoff = const Duration(seconds: 30),
   });
