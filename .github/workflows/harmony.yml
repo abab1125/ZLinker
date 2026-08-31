@@ -28,7 +28,10 @@ on:
     tags: ['v*']
 
 env:
-  FLUTTER_OHOS_BRANCH: '3.27.5-ohos-1.0.3'
+  # IMPORTANT: release tags point at engine hashes the SIG bucket NEVER
+  # published artifacts for; only the dev/master engine hash has a full
+  # artifact set. The README's "clone dev or master" guidance is load-bearing.
+  FLUTTER_OHOS_BRANCH: 'master'
   FLUTTER_OHOS_REPO: 'https://gitcode.com/openharmony-sig/flutter_flutter.git'
   FLUTTER_OHOS_REPO_MIRROR: 'https://gitee.com/openharmony-sig/flutter_flutter.git'
   PUB_HOSTED_URL: https://pub.flutter-io.cn
