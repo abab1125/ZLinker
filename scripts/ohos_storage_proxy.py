@@ -5,7 +5,9 @@ The SIG OBS bucket (flutter-ohos.obs.cn-south-1.myhuaweicloud.com) does not
 carry every upstream host artifact (notably linux-x64/font-subset.zip), but
 the SIG flutter tool requests them by upstream layout. This proxy fronts the
 OBS bucket and falls back to the official Flutter mirror (storage.flutter-io.cn)
-on 404, so `FLUTTER_STORAGE_BASE_URL=http://127.0.0.1:8899` just works.
+on 404, so `FLUTTER_STORAGE_BASE_URL=http://127.0.0.1:8899` just works. Fallback
+order prefers storage.googleapis.com (runners sit outside CN where the
+flutter-io.cn mirror answers 403).
 
 Run: python3 scripts/ohos_storage_proxy.py [port]
 """
@@ -15,7 +17,12 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PRIMARY = 'https://flutter-ohos.obs.cn-south-1.myhuaweicloud.com'
-FALLBACK = 'https://storage.flutter-io.cn'
+# Order matters: runners are usually outside CN, where the flutter-io.cn
+# mirror answers 403 — prefer the global Google bucket first.
+FALLBACKS = [
+    'https://storage.googleapis.com',
+    'https://storage.flutter-io.cn',
+]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -23,7 +30,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _upstream(self, method):
         last_error = None
-        for base in (PRIMARY, FALLBACK):
+        for base in [PRIMARY, *FALLBACKS]:
             try:
                 req = urllib.request.Request(base + self.path, method=method)
                 resp = urllib.request.urlopen(req, timeout=300)
