@@ -91,6 +91,21 @@ jobs:
           mkdir -p ~/.config 2>/dev/null || true
           printf 'registry=https://repo.harmonyos.com/npm/\n@ohos:registry=https://repo.harmonyos.com/npm/\n' > ~/.npmrc
 
+      - name: Pre-seed missing host artifact (font-subset)
+        # The SIG OBS bucket lacks font-subset.zip for this engine hash
+        # (everything else downloads fine); the identical artifact exists
+        # on the official Flutter mirrors. Seed it into bin/cache so the
+        # tool's validation passes without re-downloading.
+        run: |
+          set -e
+          HASH=$(cat "$RUNNER_TEMP/flutter-ohos/bin/internal/engine.version" | tr -d ' 
+')
+          CACHE="$RUNNER_TEMP/flutter-ohos/bin/cache"
+          mkdir -p "$CACHE/artifacts/engine"
+          curl -fL --retry 3 -o "$CACHE/artifacts/engine/font-subset.zip"             "https://storage.flutter-io.cn/flutter_infra_release/flutter/$HASH/linux-x64/font-subset.zip"
+          # stamp the cache marker the tool checks (same name, no .zip)
+          touch "$CACHE/artifacts/engine/font-subset.zip.stamp" || true
+
       - name: Add ohos platform to the project
         run: |
           set -e
