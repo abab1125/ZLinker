@@ -67,7 +67,7 @@ void main() {
         final hasMore2 = res2 is Map ? res2['hasMore'] : null;
         final epoch2 = res2 is Map ? res2['atLogEpoch'] : null;
         final ids2 = [
-          for (final r in (rows2 as List).whereType<Map>())
+          for (final r in rows2.whereType<Map>())
             (r['rowId'] as num?)?.toInt() ?? -1,
         ]..sort();
         // ignore: avoid_print
