@@ -5,6 +5,7 @@ import '../protocol/id.dart';
 import '../state/device_session.dart';
 import 'theme.dart';
 import 'ui_settings.dart';
+import 'widgets/dropdown_field.dart';
 
 /// Model provider management of one device (model-provider channel:
 /// getAll/save/delete), restyled with the ZLinker tokens.
@@ -408,8 +409,8 @@ class _AddProviderSheetState extends State<_AddProviderSheet> {
                 hintText: 'My Provider'),
           ),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: _apiFormat,
+          DropdownField<String>(
+            value: _apiFormat,
             decoration: InputDecoration(
                 labelText: tr(context, 'providers.apiFormat')),
             items: [

@@ -182,20 +182,10 @@ ThemeData _base(ColorScheme scheme, Color background, Color card,
           color: foreground, fontSize: 17, fontWeight: FontWeight.w600),
       iconTheme: IconThemeData(color: foreground),
     ),
-    cardTheme: CardThemeData(
-      color: card,
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12), // official --radius-xl
-        side: BorderSide(color: border),
-      ),
-    ),
+    // card/dialog visuals ride the CardTheme/DialogTheme widgets in
+    // ZLinkerApp.builder — the ThemeData param type differs across SDKs
+    // (CardTheme vs CardThemeData), the widget form does not.
     dividerTheme: DividerThemeData(color: border, thickness: 1, space: 1),
-    dialogTheme: DialogThemeData(
-      backgroundColor: card,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: card,
       shape: const RoundedRectangleBorder(
@@ -252,5 +242,31 @@ ThemeData _base(ColorScheme scheme, Color background, Color card,
       iconColor: foreground,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
+  );
+}
+
+
+/// Card visuals for [ZLinkerApp]'s builder-wrapped CardTheme widget
+/// (stable across SDKs, unlike ThemeData.cardTheme's param type).
+CardThemeData zCardTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return CardThemeData(
+    color: dark ? ZColors.darkCard : ZColors.lightCard,
+    elevation: 0,
+    margin: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12), // official --radius-xl
+      side: BorderSide(
+          color: dark ? const Color(0x14FFFFFF) : const Color(0x140D0D0D)),
+    ),
+  );
+}
+
+/// Dialog visuals for the builder-wrapped DialogTheme widget.
+DialogThemeData zDialogTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return DialogThemeData(
+    backgroundColor: dark ? ZColors.darkCard : ZColors.lightCard,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
   );
 }

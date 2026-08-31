@@ -7,6 +7,7 @@ import '../state/device_store.dart';
 import 'model_option_field.dart';
 import 'theme.dart';
 import 'ui_settings.dart';
+import 'widgets/dropdown_field.dart';
 
 /// One 定时任务模板 idea (official moreIdeas trio): dictionary key plus
 /// its cron preset and display schedule.
@@ -99,8 +100,8 @@ class _AutomationsPageState extends State<AutomationsPage> {
   }
 
   Widget _devicePicker(List<Device> devices) {
-    return DropdownButtonFormField<String>(
-      initialValue: _deviceId,
+    return DropdownField<String>(
+      value: _deviceId,
       decoration: InputDecoration(
         labelText: tr(context, 'sched.device'),
         suffixIcon: const Icon(Icons.desktop_windows_outlined, size: 18),
@@ -986,8 +987,8 @@ class AutomationSheetState extends State<AutomationSheet> {
                     fontWeight: FontWeight.w600,
                     color: ZInk.muted(context))),
             const SizedBox(height: 8),
-            DropdownButtonFormField<FrequencyPreset>(
-              initialValue: _preset,
+            DropdownField<FrequencyPreset>(
+              value: _preset,
               decoration:
                   InputDecoration(labelText: tr(context, 'auto.preset')),
               items: [
@@ -1057,8 +1058,8 @@ class AutomationSheetState extends State<AutomationSheet> {
             ],
             if (_preset == FrequencyPreset.monthly) ...[
               const SizedBox(height: 10),
-              DropdownButtonFormField<int>(
-                initialValue: _monthDay.clamp(1, 28),
+              DropdownField<int>(
+                value: _monthDay.clamp(1, 28),
                 decoration:
                     InputDecoration(labelText: tr(context, 'auto.monthDay')),
                 items: [
@@ -1149,8 +1150,8 @@ class AutomationSheetState extends State<AutomationSheet> {
               color: ZInk.muted(context))),
       initiallyExpanded: _advanced,
       children: [
-        DropdownButtonFormField<String?>(
-          initialValue: _mode,
+        DropdownField<String?>(
+          value: _mode,
           decoration: InputDecoration(labelText: tr(context, 'auto.mode')),
           items: [
             DropdownMenuItem(
@@ -1282,8 +1283,8 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _unit,
+                  child: DropdownField<String>(
+                    value: _unit,
                     decoration: InputDecoration(
                         labelText: tr(context, 'auto.intervalUnit.label')),
                     items: [
