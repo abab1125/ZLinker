@@ -17,11 +17,9 @@ on:
       cmdline_tools_url:
         description: 'URL of command-line-tools-linux zip (override if default mirror is stale)'
         required: false
-        # DEFAULT is the only public no-login mirror (hos-sdk v2.0.2, API 9)
-        # — the 3.22 fork targets HarmonyOS NEXT (API 12+), so for a
-        # shippable HAP override this with a command-line-tools 5.x linux
-        # URL copied from developer.huawei.com (login-gated download).
-        default: 'https://github.com/harmonyos-dev/hos-sdk/releases/download/v2.0.2/commandline-tools-linux-2.0.0.2.zip'
+        # Huawei Cloud mirror, no login required (verified 200 OK, ~3.0GB).
+        # Bundle includes the HarmonyOS NEXT SDK — no sdkmgr step needed.
+        default: 'https://repo.huaweicloud.com/harmonyos/ohpm/5.0.5/commandline-tools-linux-x64-5.0.5.310.zip'
   push:
     tags: ['v*']
 
