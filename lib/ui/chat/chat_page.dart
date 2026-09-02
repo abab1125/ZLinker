@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../ui_settings.dart';
 import 'diff_view.dart';
 import 'markdown_view.dart';
+import 'goal_panel.dart';
 import 'mention_sheet.dart';
 
 /// Native chat view for one task (session), backed by Conversation V4 over
@@ -1082,6 +1083,7 @@ class _ChatPageState extends State<ChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _GoalBanner(state: state),
+                  _GoalProcessPanel(state: state, gateway: widget.gateway),
                   _BackgroundWorksBar(
                     state: state,
                     gateway: widget.gateway,
@@ -3167,6 +3169,26 @@ class _GoalBanner extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Bridges the conversation snapshot's goal/subagent data to the
+/// web 目标面板 parity widget (hidden when no goal is set — the plain
+/// _GoalBanner covers that case).
+class _GoalProcessPanel extends StatelessWidget {
+  final ConversationState state;
+  final ChatGateway gateway;
+
+  const _GoalProcessPanel({required this.state, required this.gateway});
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.snapshot?['goal'] is! Map) return const SizedBox.shrink();
+    return GoalPanel(
+      state: state,
+      onPauseGoal: (sid) => gateway.pauseGoal(sid),
+      onResumeGoal: (sid) => gateway.resumeGoal(sid),
     );
   }
 }
