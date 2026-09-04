@@ -21,7 +21,7 @@ class MethodProbe {
   }) async {
     final resolved = _resolved[op];
     final order = [
-      ?resolved,
+      if (resolved != null) resolved,
       ...candidates.where((m) => m != resolved),
     ];
     Object? firstError;

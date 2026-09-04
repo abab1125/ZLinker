@@ -3,7 +3,6 @@ name: Release (fork)
 on:
   push:
     branches: ['relaxed-stall-timings']
-    paths: ['.github/workflows/release.yml']
   workflow_dispatch:
 
 jobs:

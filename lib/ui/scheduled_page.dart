@@ -6,6 +6,7 @@ import '../state/scheduled_store.dart';
 import 'automations_page.dart';
 import 'theme.dart';
 import 'ui_settings.dart';
+import 'widgets/dropdown_field.dart';
 
 /// Combined scheduling hub: server-side device automations on top, local
 /// scheduled messages below (the two coexist — local send works offline,
@@ -132,7 +133,7 @@ class _ScheduledPageState extends State<ScheduledPage> {
                 color: ZInk.muted(context)),
           ),
         ),
-        ?trailing,
+        if (trailing != null) trailing,
       ],
     );
   }
@@ -153,9 +154,9 @@ class _ScheduledPageState extends State<ScheduledPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
+        DropdownField<String>(
           key: ValueKey('auto-device-$_autoDeviceId'),
-          initialValue: _autoDeviceId,
+          value: _autoDeviceId,
           decoration: InputDecoration(
             labelText: tr(context, 'sched.device'),
             suffixIcon:
@@ -335,8 +336,8 @@ class _AddSheetState extends State<_AddSheet> {
           Text(tr(context, 'sched.hint'),
               style: TextStyle(fontSize: 11, color: ZInk.muted(context))),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _deviceId,
+          DropdownField<String>(
+            value: _deviceId,
             decoration:
                 InputDecoration(labelText: tr(context, 'sched.device')),
             items: [

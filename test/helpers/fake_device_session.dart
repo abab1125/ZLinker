@@ -18,7 +18,7 @@ class FakeDeviceSession extends DeviceSession {
     List<Map<String, dynamic>> entries = const [],
     List<Map<String, dynamic>> workspaces = const [],
     this.relayTasks = const [],
-    this._chatRows = const [],
+    this.chatRows = const [],
     this.snapshotExtra = const {},
     this.channelHandler,
   }) : status = DeviceStatus.connected,
@@ -41,7 +41,7 @@ class FakeDeviceSession extends DeviceSession {
   @override
   List<Map<String, dynamic>> relayTasks;
   Map<String, dynamic>? _active;
-  final List<Map<String, dynamic>> _chatRows;
+  final List<Map<String, dynamic>> chatRows;
 
   /// Extra snapshot fields (queue / pendingInteractions) merged into the
   /// seeded chat feed.
@@ -103,7 +103,7 @@ class FakeDeviceSession extends DeviceSession {
   @override
   Future<ChatHandle> subscribe(String sessionId) async {
     final state = ConversationState();
-    if (_chatRows.isNotEmpty) {
+    if (chatRows.isNotEmpty) {
       state.applyFrame({
         'toSeq': 1,
         'payload': {
@@ -112,7 +112,7 @@ class FakeDeviceSession extends DeviceSession {
             'sessionId': sessionId,
             'logEpoch': 'e1',
             'revision': 1,
-            'rows': {'window': _chatRows, 'totalCount': _chatRows.length},
+            'rows': {'window': chatRows, 'totalCount': chatRows.length},
             ...snapshotExtra,
           },
         },

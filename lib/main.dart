@@ -189,8 +189,15 @@ class _ZLinkerAppState extends State<ZLinkerApp> {
           darkTheme: buildDarkTheme(),
           themeMode: _theme.mode,
           // Wraps the whole navigator so dialogs/overlays see tr() too.
-          builder: (context, child) =>
-              UiSettingsProvider(settings: _ui, child: child!),
+          // CardTheme/DialogTheme ride the builder (widget form is stable
+          // across SDKs; the ThemeData param type is not).
+          builder: (context, child) => CardTheme(
+                data: zCardTheme(Theme.of(context).brightness),
+                child: DialogTheme(
+                  data: zDialogTheme(Theme.of(context).brightness),
+                  child: UiSettingsProvider(settings: _ui, child: child!),
+                ),
+              ),
           home: DevicesPage(
             store: _store,
             theme: _theme,

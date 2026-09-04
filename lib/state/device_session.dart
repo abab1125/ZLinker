@@ -290,6 +290,23 @@ abstract interface class ChatGateway implements Listenable {
     String sessionId, {
     required Map<String, dynamic> target,
   });
+
+  /// @-mention data sources (web chat.mention.* picker).
+  /// Files of the active workspace: {name, path, relativePath, type}.
+  Future<List<Map<String, dynamic>>> mentionFiles();
+
+  /// Skills (id/name/description) — same data as the $ picker.
+  Future<List<Map<String, dynamic>>> mentionSkills();
+
+  /// Subagents (name/description); empty on desktops rejecting the call.
+  Future<List<Map<String, dynamic>>> mentionSubagents();
+
+  /// Open sessions of the active workspace (id/title).
+  List<({String id, String title})> mentionSessions();
+
+  /// Skills synchronously from the last known list (mention picker reads
+  /// this without awaiting a fresh RPC).
+  List<Map<String, dynamic>> mentionSkillsSync();
 }
 
 /// One native protocol connection to one device. Owns the full stack
@@ -1283,6 +1300,71 @@ class DeviceSession extends ChangeNotifier
     String sessionId, {
     required Map<String, dynamic> target,
   }) => _requireConversation.fileRewindPreview(sessionId, target: target);
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionFiles() async {
+    final root = workspacePath;
+    if (root == null || root.isEmpty) return const [];
+    try {
+      final res = await callChannel('file', 'listWorkspaceFiles', [
+        {'rootPath': root}
+      ]);
+      return res is List
+          ? res.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList()
+          : const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionSkills() async {
+    try {
+      return [
+        for (final s in await skills())
+          {
+            'id': s.name,
+            'name': s.name,
+            if (s.description != null) 'description': s.description,
+          },
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> mentionSubagents() async {
+    try {
+      final res = await callChannel('subagents', 'list', []);
+      final list = res is Map ? res['agents'] : res;
+      return list is List
+          ? list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList()
+          : const [];
+    } catch (_) {
+      // Desktops without the subagent runtime reject the call — empty state.
+      return const [];
+    }
+  }
+
+  @override
+  List<({String id, String title})> mentionSessions() {
+    final list = sessions?.list ?? const [];
+    return [
+      for (final e in list) (id: e.sessionId, title: e.title),
+    ];
+  }
+
+  @override
+  List<Map<String, dynamic>> mentionSkillsSync() {
+    return [
+      for (final s in (conversation?.lastSkills ?? const <SkillEntry>[]))
+        {
+          'name': s.name,
+          if (s.description != null) 'description': s.description,
+        },
+    ];
+  }
 
   /// Cleanly closes the connection so the in-app WebView (or another
   /// terminal) can take the slot without a KICK race. Callers reconnect

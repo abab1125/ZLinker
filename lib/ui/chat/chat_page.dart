@@ -11,6 +11,8 @@ import '../theme.dart';
 import '../ui_settings.dart';
 import 'diff_view.dart';
 import 'markdown_view.dart';
+import 'goal_panel.dart';
+import 'mention_sheet.dart';
 
 /// Native chat view for one task (session), backed by Conversation V4 over
 /// [ChatGateway]. Draft mode (no [sessionId]): the first message issues
@@ -69,6 +71,11 @@ class _ChatPageState extends State<ChatPage> {
   bool _sending = false;
   bool _loadingOlder = false;
   bool _showSlash = false;
+
+  /// @-mention picker state (see _maybeOpenMentionPicker).
+  bool _mentionOpen = false;
+  int _mentionTriggerEnd = 0;
+  bool get _mentionEnabled => true;
   String? _progress;
   final List<_PendingFile> _pendingFiles = [];
   double? _uploadProgress;
@@ -111,6 +118,41 @@ class _ChatPageState extends State<ChatPage> {
       if (show != _showSlash && mounted) {
         setState(() => _showSlash = show);
       }
+      _maybeOpenMentionPicker(text);
+    });
+  }
+
+  /// Web @-mention parity: typing `@` at word start opens the mention
+  /// picker; the picked reference replaces the trigger and gets a trailing
+  /// space. Debounced by the sheet-open flag.
+  void _maybeOpenMentionPicker(String text) {
+    if (_mentionOpen || !_mentionEnabled) return;
+    final sel = _inputController.selection;
+    if (!sel.isValid) return;
+    final i = sel.baseOffset;
+    if (i < 1 || i > text.length) return;
+    if (text[i - 1] != '@') return;
+    const newlines = '\n';
+    final atWordStart =
+        i == 1 ||
+        text[i - 2] == ' ' ||
+        text[i - 2] == newlines;
+    if (!atWordStart) return;
+    _mentionOpen = true;
+    _mentionTriggerEnd = i;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final entry = await showMentionSheet(context, widget.gateway);
+      _mentionOpen = false;
+      if (!mounted || entry == null) return;
+      final start =
+          (_mentionTriggerEnd - 1).clamp(0, _inputController.text.length);
+      final next = applyMentionInsert(
+          _inputController.text, _mentionTriggerEnd, entry.insert);
+      _inputController.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(
+            offset: start + entry.insert.length + 2),
+      );
     });
   }
 
@@ -1041,6 +1083,7 @@ class _ChatPageState extends State<ChatPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _GoalBanner(state: state),
+                  _GoalProcessPanel(state: state, gateway: widget.gateway),
                   _BackgroundWorksBar(
                     state: state,
                     gateway: widget.gateway,
@@ -1092,7 +1135,9 @@ class _ChatPageState extends State<ChatPage> {
               onRemove: (i) => setState(() => _pendingFiles.removeAt(i)),
             ),
           AnimatedBuilder(
-            animation: Listenable.merge([?state, widget.gateway]),
+            animation: (state == null)
+              ? widget.gateway
+              : Listenable.merge([state, widget.gateway]),
             builder: (context, _) => _contentCol(
               _InputBar(
                 controller: _inputController,
@@ -1280,7 +1325,6 @@ String? businessErrorCopy(String errorText, String Function() retryLater) {
     '429': '请求被限流，请稍后重试。',
   }[m.group(1)];
   if (copy == null) return null;
-  // ignore: avoid_print
   return '$copy (${retryLater.call()})';
 }
 
@@ -1584,7 +1628,7 @@ class _RowWidget extends StatelessWidget {
 
   Map<String, dynamic> get _target => {
     'rowId': row['rowId'],
-    'entityId': ?row['entityId'],
+    if (row['entityId'] != null) 'entityId': row['entityId'],
   };
 
   void _showActions(BuildContext context) {
@@ -1917,7 +1961,7 @@ class _UserBubbleState extends State<_UserBubble> {
     try {
       await widget.gateway.editUserQuery(widget.sessionId, {
         'rowId': widget.row['rowId'],
-        'entityId': ?widget.row['entityId'],
+        if (widget.row['entityId'] != null) 'entityId': widget.row['entityId'],
       }, newText);
     } catch (e) {
       if (context.mounted) {
@@ -2075,7 +2119,7 @@ class _AssistantBubble extends StatelessWidget {
     state.optimisticRowUpdate(row['rowId'] as num?, {'feedback': value});
     gateway.setAssistantFeedback(sessionId, {
       'rowId': row['rowId'],
-      'entityId': ?row['entityId'],
+      if (row['entityId'] != null) 'entityId': row['entityId'],
     }, value);
   }
 
@@ -2135,7 +2179,7 @@ class _AssistantBubble extends StatelessWidget {
                     active: false,
                     onTap: () => gateway.forkAssistant(sessionId, {
                       'rowId': row['rowId'],
-                      'entityId': ?row['entityId'],
+                      if (row['entityId'] != null) 'entityId': row['entityId'],
                     }),
                   ),
                 ],
@@ -2362,7 +2406,7 @@ class _ToolCallTile extends StatelessWidget {
                   child: Image.memory(
                     base64Decode(image['base64'] as String),
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                   ),
                 ),
               ),
@@ -2807,7 +2851,7 @@ class _FileChangesBar extends StatelessWidget {
   Future<void> _rewindWithPreview(BuildContext context) async {
     final target = {
       'rowId': row['rowId'],
-      'entityId': ?row['entityId'],
+      if (row['entityId'] != null) 'entityId': row['entityId'],
     };
     final action = onAction(
       tr(context, 'chat.action.rewind.failed'),
@@ -3125,6 +3169,26 @@ class _GoalBanner extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Bridges the conversation snapshot's goal/subagent data to the
+/// web 目标面板 parity widget (hidden when no goal is set — the plain
+/// _GoalBanner covers that case).
+class _GoalProcessPanel extends StatelessWidget {
+  final ConversationState state;
+  final ChatGateway gateway;
+
+  const _GoalProcessPanel({required this.state, required this.gateway});
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.snapshot?['goal'] is! Map) return const SizedBox.shrink();
+    return GoalPanel(
+      state: state,
+      onPauseGoal: (sid) => gateway.pauseGoal(sid),
+      onResumeGoal: (sid) => gateway.resumeGoal(sid),
     );
   }
 }
@@ -4953,20 +5017,19 @@ class _InputBarState extends State<_InputBar> {
       builder: (context) => SimpleDialog(
         title: Text(tr(context, 'chat.sheet.mode')),
         children: [
-          RadioGroup<String>(
-            groupValue: _modeValue,
-            onChanged: (v) => Navigator.pop(context, v),
-            child: Column(
-              children: [
-                for (final m in const ['build', 'edit', 'plan', 'yolo'])
-                  RadioListTile<String>(
-                    dense: true,
-                    value: m,
-                    title: Text(tr(context, 'chat.mode.$m')),
-                    subtitle: Text(tr(context, 'chat.mode.$m.desc')),
-                  ),
-              ],
-            ),
+          Column(
+            children: [
+              for (final m in const ['build', 'edit', 'plan', 'yolo'])
+                RadioListTile<String>(
+                  dense: true,
+                  groupValue: _modeValue,
+                  value: m,
+                  onChanged: (v) =>
+                      Navigator.pop(context, v ?? _modeValue),
+                  title: Text(tr(context, 'chat.mode.$m')),
+                  subtitle: Text(tr(context, 'chat.mode.$m.desc')),
+                ),
+            ],
           ),
         ],
       ),
@@ -4988,15 +5051,18 @@ class _InputBarState extends State<_InputBar> {
       builder: (context) => SimpleDialog(
         title: Text(tr(context, 'chat.sheet.thought')),
         children: [
-          RadioGroup<String>(
-            groupValue: _thoughtLabel,
-            onChanged: (v) => Navigator.pop(context, v),
-            child: Column(
-              children: [
-                for (final t in choices)
-                  RadioListTile<String>(dense: true, value: t, title: Text(t)),
-              ],
-            ),
+          Column(
+            children: [
+              for (final t in choices)
+                RadioListTile<String>(
+                  dense: true,
+                  groupValue: _thoughtLabel,
+                  value: t,
+                  onChanged: (v) =>
+                      Navigator.pop(context, v ?? _thoughtLabel),
+                  title: Text(t),
+                ),
+            ],
           ),
         ],
       ),

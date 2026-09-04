@@ -128,35 +128,35 @@ class _DesktopSettingsPageState extends State<DesktopSettingsPage> {
             Text(tr(context, 'deskSet.interactionHint'),
                 style: TextStyle(fontSize: 11, color: ZInk.faint(context))),
             const SizedBox(height: 8),
-            RadioGroup<String>(
-              groupValue: value == 'guide' ? 'guide' : 'queue',
-              onChanged: (v) {
-                if (v != null && v != value) _update({'zcodeInteractionBehavior': v});
-              },
-              child: Column(
-                children: [
-                  for (final (v, label, hint) in [
-                    (
-                      'queue',
-                      tr(context, 'deskSet.interactionQueue'),
-                      tr(context, 'deskSet.interactionQueueHint'),
-                    ),
-                    (
-                      'guide',
-                      tr(context, 'deskSet.interactionGuide'),
-                      tr(context, 'deskSet.interactionGuideHint'),
-                    ),
-                  ])
-                    RadioListTile<String>(
-                      value: v,
-                      title: Text(label, style: const TextStyle(fontSize: 13.5)),
-                      subtitle: Text(hint,
-                          style:
-                              TextStyle(fontSize: 11, color: ZInk.faint(context))),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                ],
-              ),
+            Column(
+              children: [
+                for (final (v, label, hint) in [
+                  (
+                    'queue',
+                    tr(context, 'deskSet.interactionQueue'),
+                    tr(context, 'deskSet.interactionQueueHint'),
+                  ),
+                  (
+                    'guide',
+                    tr(context, 'deskSet.interactionGuide'),
+                    tr(context, 'deskSet.interactionGuideHint'),
+                  ),
+                ])
+                  RadioListTile<String>(
+                    groupValue: value == 'guide' ? 'guide' : 'queue',
+                    value: v,
+                    onChanged: (sel) {
+                      if (sel != null && sel != value) {
+                        _update({'zcodeInteractionBehavior': sel});
+                      }
+                    },
+                    title: Text(label, style: const TextStyle(fontSize: 13.5)),
+                    subtitle: Text(hint,
+                        style:
+                            TextStyle(fontSize: 11, color: ZInk.faint(context))),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+              ],
             ),
           ],
         ),

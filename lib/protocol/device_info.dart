@@ -23,5 +23,8 @@ String remotePlatformName() {
       return 'linux';
     case TargetPlatform.fuchsia:
       return 'fuchsia';
+    default:
+      // ohos fork adds TargetPlatform.ohos to the enum
+      return 'ohos';
   }
 }

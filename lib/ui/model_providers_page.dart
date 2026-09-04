@@ -5,6 +5,7 @@ import '../protocol/id.dart';
 import '../state/device_session.dart';
 import 'theme.dart';
 import 'ui_settings.dart';
+import 'widgets/dropdown_field.dart';
 
 /// Model provider management of one device (model-provider channel:
 /// getAll/save/delete), restyled with the ZLinker tokens.
@@ -191,7 +192,7 @@ class _ModelProvidersPageState extends State<ModelProvidersPage> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: _providers.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final p = _providers[index];
                       final enabled = p['enabled'] == true;
@@ -408,8 +409,8 @@ class _AddProviderSheetState extends State<_AddProviderSheet> {
                 hintText: 'My Provider'),
           ),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: _apiFormat,
+          DropdownField<String>(
+            value: _apiFormat,
             decoration: InputDecoration(
                 labelText: tr(context, 'providers.apiFormat')),
             items: [
