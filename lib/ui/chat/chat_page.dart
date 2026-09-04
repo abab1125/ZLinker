@@ -62,7 +62,7 @@ class _PendingFile {
   _PendingFile(this.fileName, this.mime, this.bytes);
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ChatHandle? _handle;
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
@@ -99,6 +99,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sessionId = widget.sessionId;
     _pinned = widget.initialPinned;
     final initial = widget.initialComposerText;
@@ -120,6 +121,22 @@ class _ChatPageState extends State<ChatPage> {
       }
       _maybeOpenMentionPicker(text);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _sessionId != null) {
+      _refreshLatest();
+    }
+  }
+
+  Future<void> _refreshLatest() async {
+    final handle = _handle;
+    if (handle == null || !mounted) return;
+    try {
+      await handle.resync(forceSnapshot: true);
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   /// Web @-mention parity: typing `@` at word start opens the mention
@@ -180,6 +197,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // mobile-view-state back to workspace-only (the phone left this task).
     try {
       widget.gateway.sendViewState();
@@ -781,6 +799,8 @@ class _ChatPageState extends State<ChatPage> {
             () => widget.gateway.compact(sessionId),
           );
         }
+      case 'refresh':
+        _refreshLatest();
       case 'usage':
         _showUsageSheet();
       case 'plans':
@@ -846,6 +866,7 @@ class _ChatPageState extends State<ChatPage> {
     const PopupMenuDivider(),
     _menuItem('copyLink', Icons.link, 'chat.more.copyLink'),
     _menuItem('compact', Icons.compress, 'chat.more.compact'),
+    _menuItem('refresh', Icons.refresh_outlined, 'chat.more.refresh'),
     _menuItem('usage', Icons.query_stats_outlined, 'chat.more.usage'),
     _menuItem('plans', Icons.checklist_outlined, 'chat.more.plans'),
     const PopupMenuDivider(),
@@ -1011,19 +1032,33 @@ class _ChatPageState extends State<ChatPage> {
                       final itemCount =
                           groups.length + (state.canLoadOlder ? 1 : 0);
                       if (groups.isEmpty && !state.canLoadOlder) {
-                        return Center(
-                          child: Text(
-                            tr(context, 'chat.empty'),
-                            style: TextStyle(color: ZInk.faint(context)),
+                        return RefreshIndicator(
+                          onRefresh: _refreshLatest,
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: 300,
+                                child: Center(
+                                  child: Text(
+                                    tr(context, 'chat.empty'),
+                                    style: TextStyle(color: ZInk.faint(context)),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }
                       return _contentCol(
-                        ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                          itemCount: itemCount,
-                          itemBuilder: (context, index) {
+                        RefreshIndicator(
+                          onRefresh: _refreshLatest,
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                            itemCount: itemCount,
+                            itemBuilder: (context, index) {
                             if (state.canLoadOlder && index == 0) {
                               return Center(
                                 child: TextButton.icon(
@@ -1068,7 +1103,8 @@ class _ChatPageState extends State<ChatPage> {
                             );
                           },
                         ),
-                      );
+                      ),
+                    );
                     },
                   ),
           ),

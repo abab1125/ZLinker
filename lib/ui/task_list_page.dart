@@ -1152,13 +1152,11 @@ class _TaskListPageState extends State<TaskListPage> {
     final title = entry.title.trim().isEmpty
         ? tr(context, 'tasks.untitled')
         : entry.title;
-    final ws =
-        _workspaceForKey(
-          session,
-          entry.raw['workspaceIdentity'] as String? ??
-              entry.raw['workspacePath'] as String?,
-        ) ??
-        session.activeWorkspace;
+    final ws = _workspaceForKey(
+      session,
+      entry.raw['workspaceIdentity'] as String? ??
+          entry.raw['workspacePath'] as String?,
+    );
     final subtitle = [
       if (ws != null) workspaceTitle(ws),
       relativeTimeShort(context, entry.lastActivityAt),
@@ -1262,6 +1260,7 @@ class _TaskListPageState extends State<TaskListPage> {
               session,
               e,
               workspaceLabel: _rowWorkspaceLabel(session, wsOf[e.sessionId]),
+              workspace: wsOf[e.sessionId],
             ),
           ),
       ],
@@ -1713,6 +1712,11 @@ class _TaskListPageState extends State<TaskListPage> {
     SessionEntry entry,
     String title,
   ) async {
+    workspace ??= _workspaceForKey(
+      session,
+      entry.raw['workspaceIdentity'] as String? ??
+          entry.raw['workspacePath'] as String?,
+    );
     if (workspace != null && !_isWorkspaceActive(session, workspace)) {
       await session.openWorkspace(workspace, taskId: entry.sessionId);
     }

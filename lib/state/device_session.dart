@@ -141,8 +141,17 @@ abstract interface class NotifiableSession
 class ChatHandle {
   final ConversationState state;
   final Future<void> Function() close;
+  final Future<void> Function({bool forceSnapshot})? onResync;
 
-  const ChatHandle({required this.state, required this.close});
+  const ChatHandle({
+    required this.state,
+    required this.close,
+    this.onResync,
+  });
+
+  Future<void> resync({bool forceSnapshot = false}) async {
+    await onResync?.call(forceSnapshot: forceSnapshot);
+  }
 }
 
 /// The Conversation V4 surface the native chat page drives — the
@@ -1066,6 +1075,8 @@ class DeviceSession extends ChangeNotifier
             await existing.dispose();
           }
         },
+        onResync: ({bool forceSnapshot = false}) =>
+            existing.resync(forceSnapshot: forceSnapshot),
       );
     }
     final sub = await _requireConversation.subscribe(sessionId);
@@ -1078,6 +1089,8 @@ class DeviceSession extends ChangeNotifier
           await sub.dispose();
         }
       },
+      onResync: ({bool forceSnapshot = false}) =>
+          sub.resync(forceSnapshot: forceSnapshot),
     );
   }
 

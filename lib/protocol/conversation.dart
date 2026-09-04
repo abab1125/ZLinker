@@ -958,15 +958,20 @@ abstract class _SubscriptionBase<T extends ChangeNotifier> {
     }
   }
 
-  Future<void> _resync() async {
+  Future<void> resync({bool forceSnapshot = false}) async {
+    if (_disposed) return;
     final id = _subscriptionId;
-    if (id == null || _disposed || _resyncing) return;
+    if (id == null) {
+      await _resubscribe();
+      return;
+    }
+    if (_resyncing) return;
     _resyncing = true;
     _transport._log(
-      '[$_logTag] resync (gap detected) seq=$_resyncSeq logEpoch=$_resyncEpoch',
+      '[$_logTag] resync requested (forceSnapshot: $forceSnapshot) seq=$_resyncSeq logEpoch=$_resyncEpoch',
     );
     try {
-      await _transport._channels.call(
+      final res = await _transport._channels.call(
         ConversationTransport.channel,
         _resyncMethod,
         [
@@ -974,17 +979,34 @@ abstract class _SubscriptionBase<T extends ChangeNotifier> {
             ..._transport.scope,
             'subscriptionId': id,
             ..._resyncArgs,
-            if (_resyncEpoch != null)
+            if (forceSnapshot) 'forceSnapshot': true,
+            if (!forceSnapshot && _resyncEpoch != null)
               'base': {'logEpoch': _resyncEpoch, 'seq': _resyncSeq},
           },
         ],
       );
+      if (res is Map) {
+        final ack = res['ack'] as Map?;
+        if (ack != null) {
+          _onSubscribeAck(ack.cast<String, dynamic>());
+        }
+        final snap = res['snapshot'] as Map?;
+        if (snap != null) {
+          _acceptOrStage({
+            'kind': 'snapshot',
+            'payload': {'kind': 'snapshot', 'snapshot': snap},
+          });
+        }
+      }
     } catch (e) {
-      _transport._log('[$_logTag] resync failed: $e');
+      _transport._log('[$_logTag] resync failed: $e, falling back to resubscribe');
+      await _resubscribe();
     } finally {
       _resyncing = false;
     }
   }
+
+  Future<void> _resync() => resync(forceSnapshot: false);
 
   Future<void> dispose() async {
     _disposed = true;
