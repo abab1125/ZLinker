@@ -92,6 +92,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// opening the chat lands at the bottom; the user scrolling up unpins it.
   bool _stickToBottom = true;
 
+  /// Set on page open, cleared once the initial snap-to-bottom lands. While
+  /// pending, scroll events must not unpin: the auto-load of older rows
+  /// prepends content at the top, which otherwise reads as "user scrolled
+  /// up" and cancels the very jump that should follow it.
+  bool _openSnapPending = false;
+
   /// Mirrors [ChatPage.initialPinned]; flips when the 更多 pin toggle runs.
   bool _pinned = false;
 
@@ -180,6 +186,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
+    // The initial open snap is still in flight — don't let the intermediate
+    // positions (e.g. the top after older rows were prepended) unpin us.
+    if (_openSnapPending) return;
     final max = _scrollController.position.maxScrollExtent;
     _stickToBottom = _scrollController.position.pixels >= max - 40;
   }
@@ -231,18 +240,42 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // mobile-view-state: the desktop shows 「手机正在操作此任务」 from it.
       widget.gateway.sendViewState(taskId: sessionId);
       handle.state.addListener(_scrollToBottom);
+      _openSnapPending = true;
       // The server snapshot is a tail window (can be as few as 3 rows).
       // The official client shows the full history immediately, so
       // auto-load the missing older rows once on open.
       if (handle.state.canLoadOlder) {
         await _loadOlder();
       }
-      // Explicitly position at the newest message: the state listener only
-      // fires on LATER updates and misses the initial snapshot.
-      _scrollToBottom();
+      // Land on the newest message: instant, with cross-frame retries (the
+      // animated _scrollToBottom refuses when the prepended older rows made
+      // the position read as "user is at the top", and the lazy ListView
+      // may not have extents on the first frame at all).
+      _snapToBottomImmediate();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
+  }
+
+  /// Instant jump to the newest message, retrying across frames until the
+  /// list view is attached and reports real extents. Cleared after landing
+  /// (or after giving up) so normal scroll-following resumes.
+  void _snapToBottomImmediate({int attempt = 0}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_openSnapPending) return;
+      if (!_scrollController.hasClients ||
+          _scrollController.position.maxScrollExtent <= 0) {
+        if (attempt < 12) {
+          _snapToBottomImmediate(attempt: attempt + 1);
+        } else {
+          _openSnapPending = false;
+        }
+        return;
+      }
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _stickToBottom = true;
+      _openSnapPending = false;
+    });
   }
 
   void _scrollToBottom() {
@@ -1038,6 +1071,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       final groups = _groupRows(state.rows);
                       final itemCount =
                           groups.length + (state.canLoadOlder ? 1 : 0);
+                      // First content build after open (the snapshot may land
+                      // after _subscribe returned): start the pending snap.
+                      if (_openSnapPending && groups.isNotEmpty) {
+                        _snapToBottomImmediate();
+                      }
                       if (groups.isEmpty && !state.canLoadOlder) {
                         return RefreshIndicator(
                           onRefresh: _refreshLatest,
