@@ -98,6 +98,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// up" and cancels the very jump that should follow it.
   bool _openSnapPending = false;
 
+  /// In-flight follow animations (see _scrollToBottom) — scroll events from
+  /// their intermediate positions must not unpin either.
+  int _programmaticFollow = 0;
+
   /// Mirrors [ChatPage.initialPinned]; flips when the 更多 pin toggle runs.
   bool _pinned = false;
 
@@ -186,9 +190,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    // The initial open snap is still in flight — don't let the intermediate
-    // positions (e.g. the top after older rows were prepended) unpin us.
-    if (_openSnapPending) return;
+    // Programmatic scrolls (open snap, follow animation) emit scroll events
+    // from intermediate positions — reacting to those used to unpin us
+    // mid-flight and strand the chat mid-history.
+    if (_openSnapPending || _programmaticFollow > 0) return;
     final max = _scrollController.position.maxScrollExtent;
     _stickToBottom = _scrollController.position.pixels >= max - 40;
   }
@@ -282,14 +287,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       final max = _scrollController.position.maxScrollExtent;
-      // Snap to the newest message on open; afterwards only follow while the
-      // user is already near the bottom (so reading history isn't yanked).
+      // Follow while pinned (or near the bottom so reading history isn't
+      // yanked). The in-flight animation is also treated as programmatic:
+      // its intermediate positions must not read as "user scrolled up".
       if (_stickToBottom || _scrollController.position.pixels > max - 400) {
-        _scrollController.animateTo(
-          max,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        _programmaticFollow++;
+        _scrollController
+            .animateTo(
+              max,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            )
+            .whenComplete(() {
+              if (_programmaticFollow > 0) _programmaticFollow--;
+            });
       }
     });
   }
