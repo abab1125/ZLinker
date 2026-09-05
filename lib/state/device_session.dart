@@ -189,6 +189,13 @@ abstract interface class ChatGateway implements Listenable {
   Future<void> reconnect();
 
   Future<ChatHandle> subscribe(String sessionId);
+
+  /// Tears down the live subscription (if any) and subscribes fresh — the
+  /// same path as leaving and re-entering the chat, guaranteed to return a
+  /// full snapshot. The manual refresh action uses this because a plain
+  /// resync relies on the desktop pushing a snapshot frame, which is not
+  /// guaranteed for every failure mode.
+  Future<ChatHandle> resubscribe(String sessionId);
   Future<WorkspacePrep> prepareWorkspace();
   Future<List<SkillEntry>> skills();
 
@@ -1130,6 +1137,17 @@ class DeviceSession extends ChangeNotifier
       throw StateError('会话所属工作区当前不可用，请回到任务列表重试');
     }
     await openWorkspace(target, taskId: sessionId);
+  }
+
+  @override
+  Future<ChatHandle> resubscribe(String sessionId) async {
+    final old = _chatSubs[sessionId];
+    if (old != null) {
+      _chatSubs.remove(sessionId);
+      _chatWorkspaceKeys.remove(sessionId);
+      await old.dispose();
+    }
+    return subscribe(sessionId);
   }
 
   @override

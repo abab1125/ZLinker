@@ -122,6 +122,9 @@ class FakeDeviceSession extends DeviceSession {
   }
 
   @override
+  Future<ChatHandle> resubscribe(String sessionId) => subscribe(sessionId);
+
+  @override
   Future<WorkspacePrep> prepareWorkspace() async => WorkspacePrep.fromMap({
     'configOptions': [
       {

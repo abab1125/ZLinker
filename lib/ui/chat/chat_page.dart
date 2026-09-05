@@ -202,14 +202,39 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  /// Manual refresh (floating ball, pull-down, menu, app resume): rebuild
+  /// the subscription entirely — the exact path of leaving and re-entering
+  /// the chat, guaranteed to land a full snapshot. A plain protocol resync
+  /// is only a fallback: it depends on the desktop pushing a snapshot frame
+  /// back, which does not cover every failure mode.
   Future<void> _refreshLatest() async {
-    final handle = _handle;
-    if (handle == null || _refreshing) return;
+    final sessionId = _sessionId;
+    if (sessionId == null || _refreshing) return;
     setState(() => _refreshing = true);
     try {
-      await handle.resync(forceSnapshot: true);
-      if (mounted) setState(() {});
+      final handle = await widget.gateway
+          .resubscribe(sessionId)
+          .timeout(const Duration(seconds: 60));
+      if (!mounted) {
+        await handle.close();
+        return;
+      }
+      final old = _handle;
+      old?.state.removeListener(_scrollToBottom);
+      setState(() => _handle = handle);
+      handle.state.addListener(_scrollToBottom);
+      widget.gateway.sendViewState(taskId: sessionId);
+      if (handle.state.ready && handle.state.canLoadOlder) {
+        await _loadOlder();
+      }
+      _openSnapPending = true;
+      _snapToBottomImmediate();
     } catch (_) {
+      // Rebuild failed (link down etc.) — at least try the light-weight
+      // protocol resync on the still-attached subscription.
+      try {
+        await _handle?.resync(forceSnapshot: true);
+      } catch (_) {}
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }

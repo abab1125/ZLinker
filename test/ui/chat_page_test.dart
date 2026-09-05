@@ -57,6 +57,9 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
     return ChatHandle(state: state, close: () async {});
   }
 
+  @override
+  Future<ChatHandle> resubscribe(String sessionId) => subscribe(sessionId);
+
   dynamic _rec(String method, [List<Object?> args = const []]) {
     calls.add((method, args));
     return {'status': 'accepted'};
