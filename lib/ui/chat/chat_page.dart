@@ -351,23 +351,54 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   /// Instant jump to the newest message, retrying across frames until the
-  /// list view is attached and reports real extents. Cleared after landing
-  /// (or after giving up) so normal scroll-following resumes.
+  /// list view is attached, then CALIBRATING until the lazy list's total
+  /// extent settles: jumpTo(maxScrollExtent) lands on an ESTIMATE — the
+  /// builder ListView only lays out items near the viewport, and the bottom
+  /// items get their real heights only after the jump, so a single jump
+  /// strands the view short of the true bottom. Cleared after settling so
+  /// normal scroll-following resumes.
   void _snapToBottomImmediate({int attempt = 0}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_openSnapPending) return;
       if (!_scrollController.hasClients ||
           _scrollController.position.maxScrollExtent <= 0) {
-        if (attempt < 12) {
+        // Wait up to ~1s for the list to attach and the snapshot to land.
+        if (attempt < 60) {
           _snapToBottomImmediate(attempt: attempt + 1);
         } else {
           _openSnapPending = false;
         }
         return;
       }
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      final pos = _scrollController.position;
+      _scrollController.jumpTo(pos.maxScrollExtent);
       _stickToBottom = true;
-      _openSnapPending = false;
+      _snapSettle(lastMax: pos.maxScrollExtent, attempt: 0);
+    });
+  }
+
+  /// Post-jump calibration: keep jumping to the (growing/shrinking) bottom
+  /// until the extent is stable for a frame. Bounded so a continuously
+  /// streaming session can't pin us forever.
+  void _snapSettle({required double lastMax, required int attempt}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_openSnapPending) return;
+      if (!_scrollController.hasClients) {
+        _openSnapPending = false;
+        return;
+      }
+      final pos = _scrollController.position;
+      final max = pos.maxScrollExtent;
+      final settled =
+          (max - lastMax).abs() <= 1.0 && (max - pos.pixels).abs() <= 1.0;
+      if (settled || attempt >= 30) {
+        _stickToBottom = true;
+        _openSnapPending = false;
+        return;
+      }
+      _scrollController.jumpTo(max);
+      _stickToBottom = true;
+      _snapSettle(lastMax: max, attempt: attempt + 1);
     });
   }
 
