@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -111,6 +112,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _gatewayWasConnected = widget.gateway.status == DeviceStatus.connected;
+    widget.gateway.addListener(_onGatewayChanged);
     _sessionId = widget.sessionId;
     _pinned = widget.initialPinned;
     final initial = widget.initialComposerText;
@@ -138,6 +141,64 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _sessionId != null) {
       _refreshLatest();
+    }
+  }
+
+  /// A link self-heal (suspend + connect) disposes every conversation
+  /// subscription — the handle held here goes dead and the page would
+  /// freeze until re-entered. When the gateway comes back connected,
+  /// re-subscribe and swap in the fresh handle.
+  bool _gatewayWasConnected = false;
+  Timer? _resubscribeRetry;
+
+  void _onGatewayChanged() {
+    final connected = widget.gateway.status == DeviceStatus.connected;
+    final was = _gatewayWasConnected;
+    _gatewayWasConnected = connected;
+    if (connected) {
+      _resubscribeRetry?.cancel();
+      _resubscribeRetry = null;
+    }
+    if (connected && !was && _sessionId != null) {
+      _resubscribeAfterRebuild();
+    }
+  }
+
+  Future<void> _resubscribeAfterRebuild() async {
+    final sessionId = _sessionId;
+    if (sessionId == null || !mounted) return;
+    try {
+      final handle = await widget.gateway
+          .subscribe(sessionId)
+          .timeout(const Duration(seconds: 60));
+      if (!mounted) {
+        await handle.close();
+        return;
+      }
+      final old = _handle;
+      if (old != null && identical(old.state, handle.state)) {
+        // The subscription survived (no rebuild happened) — nothing to do.
+        return;
+      }
+      old?.state.removeListener(_scrollToBottom);
+      setState(() => _handle = handle);
+      handle.state.addListener(_scrollToBottom);
+      widget.gateway.sendViewState(taskId: sessionId);
+      if (handle.state.ready && handle.state.canLoadOlder) {
+        await _loadOlder();
+      }
+      if (_stickToBottom) {
+        _openSnapPending = true;
+        _snapToBottomImmediate();
+      }
+    } catch (_) {
+      // Retry shortly while the gateway stays connected (subscribe can fail
+      // while the workspace bridge is still warming up after a rebuild).
+      _resubscribeRetry = Timer(const Duration(seconds: 3), () {
+        if (mounted && widget.gateway.status == DeviceStatus.connected) {
+          _resubscribeAfterRebuild();
+        }
+      });
     }
   }
 
@@ -217,6 +278,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.gateway.removeListener(_onGatewayChanged);
+    _resubscribeRetry?.cancel();
     // mobile-view-state back to workspace-only (the phone left this task).
     try {
       widget.gateway.sendViewState();

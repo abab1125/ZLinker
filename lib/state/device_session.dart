@@ -493,12 +493,18 @@ class DeviceSession extends ChangeNotifier
             if (t is Map) t.cast<String, dynamic>(),
       ];
       _retryAttempts = 0;
-      // Auto-open a workspace so the native list works immediately: the
-      // last-used one when known, else the first. (The web mobile flow
-      // auto-opens only a single workspace and shows a picker otherwise;
-      // here the picker is the fallback, never a blocking spinner.)
+      // Auto-open a workspace so the native list works immediately. If a
+      // chat page is still open, its home workspace wins: the link may have
+      // self-healed underneath it, and auto-opening the preferred workspace
+      // used to strand that chat on a foreign bridge (the wrong-workspace
+      // flash until its next send re-pointed it).
       if (_activeWorkspace == null && _workspaces.isNotEmpty) {
-        await openWorkspace(_preferredWorkspace ?? _workspaces.first);
+        final chatKey = _chatWorkspaceKeys.values.lastWhere(
+          (k) => k != null,
+          orElse: () => null,
+        );
+        final chatWs = _workspaceByKey(chatKey);
+        await openWorkspace(chatWs ?? _preferredWorkspace ?? _workspaces.first);
       }
       _setStatus(DeviceStatus.connected);
       // Status must read connected before arming: the watchdog only guards
@@ -1100,6 +1106,14 @@ class DeviceSession extends ChangeNotifier
   /// time) so sends can be re-pointed when the active workspace drifts.
   final Map<String, String?> _chatWorkspaceKeys = {};
 
+  Map<String, dynamic>? _workspaceByKey(String? key) {
+    if (key == null) return null;
+    for (final ws in _workspaces) {
+      if (workspaceKeyOf(ws) == key) return ws;
+    }
+    return null;
+  }
+
   /// Re-points the workspace bridge when the chat's home workspace no longer
   /// matches the active one. Drift happens when the link self-heals
   /// (suspend clears the active workspace and connect() auto-opens the
@@ -1111,13 +1125,7 @@ class DeviceSession extends ChangeNotifier
     if (expected == null) return;
     final current = workspaceKeyOf(_activeWorkspace ?? const {});
     if (current == expected) return;
-    Map<String, dynamic>? target;
-    for (final ws in _workspaces) {
-      if (workspaceKeyOf(ws) == expected) {
-        target = ws;
-        break;
-      }
-    }
+    final target = _workspaceByKey(expected);
     if (target == null) {
       throw StateError('会话所属工作区当前不可用，请回到任务列表重试');
     }
