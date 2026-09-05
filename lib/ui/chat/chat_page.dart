@@ -71,6 +71,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _sending = false;
   bool _loadingOlder = false;
   bool _showSlash = false;
+  bool _refreshing = false;
 
   /// @-mention picker state (see _maybeOpenMentionPicker).
   bool _mentionOpen = false;
@@ -132,11 +133,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _refreshLatest() async {
     final handle = _handle;
-    if (handle == null || !mounted) return;
+    if (handle == null || _refreshing) return;
+    setState(() => _refreshing = true);
     try {
       await handle.resync(forceSnapshot: true);
       if (mounted) setState(() {});
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   /// Web @-mention parity: typing `@` at word start opens the mention
@@ -1014,20 +1019,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               ),
             ),
           Expanded(
-            child: state == null
-                ? Center(
-                    child: _sessionId == null
-                        ? Text(
-                            tr(context, 'chat.draftHint'),
-                            style: TextStyle(color: ZInk.faint(context)),
-                          )
-                        : const CircularProgressIndicator(),
-                  )
-                : !state.ready
-                ? const Center(child: CircularProgressIndicator())
-                : AnimatedBuilder(
-                    animation: state,
-                    builder: (context, _) {
+            child: Stack(
+              children: [
+                state == null
+                    ? Center(
+                        child: _sessionId == null
+                            ? Text(
+                                tr(context, 'chat.draftHint'),
+                                style: TextStyle(color: ZInk.faint(context)),
+                              )
+                            : const CircularProgressIndicator(),
+                      )
+                    : !state.ready
+                    ? const Center(child: CircularProgressIndicator())
+                    : AnimatedBuilder(
+                        animation: state,
+                        builder: (context, _) {
                       final groups = _groupRows(state.rows);
                       final itemCount =
                           groups.length + (state.canLoadOlder ? 1 : 0);
@@ -1107,6 +1114,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     );
                     },
                   ),
+                if (_sessionId != null)
+                  Positioned(
+                    right: 16,
+                    bottom: 14,
+                    child: _RefreshBall(
+                      busy: _refreshing,
+                      onTap: _refreshLatest,
+                    ),
+                  ),
+              ],
+            ),
           ),
           AnimatedBuilder(
             animation: widget.gateway,
@@ -1291,6 +1309,53 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 }
 
 /// ---------------------------------------------------------------- rows
+
+/// Floating refresh ball: always-visible one-tap resync on the chat page.
+/// Pull-to-refresh needs a gesture from the very top; the ball works from
+/// anywhere, and spins while the resync is in flight.
+class _RefreshBall extends StatelessWidget {
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _RefreshBall({required this.busy, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: ZColors.sky500.withValues(alpha: 0.85),
+      shape: const CircleBorder(),
+      elevation: 3,
+      shadowColor: Colors.black26,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: busy ? null : onTap,
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: busy
+                ? const SizedBox(
+                    key: ValueKey('busy'),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(
+                    key: ValueKey('idle'),
+                    Icons.refresh,
+                    size: 22,
+                    color: Colors.white,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Banner driven by gateway link status: quiet when healthy, "reconnecting"
 /// while the relay link is down mid-chat (a send may pause until recovery).

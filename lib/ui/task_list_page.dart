@@ -330,7 +330,12 @@ class _TaskListPageState extends State<TaskListPage> {
           _overflowMenu(),
         ],
       ),
-      body: _listBody(context),
+      body: Stack(
+        children: [
+          _listBody(context),
+          _AssistiveRefreshBall(onRefresh: _refreshFromBall),
+        ],
+      ),
     );
   }
 
@@ -937,6 +942,17 @@ class _TaskListPageState extends State<TaskListPage> {
         );
       },
     );
+  }
+
+  /// AssistiveTouch-style floating ball action: one tap reloads the
+  /// workspace/task list without hunting through menus.
+  Future<void> _refreshFromBall() async {
+    final session = _session;
+    if (session != null) {
+      await session.reloadTasks();
+    } else {
+      await widget.hub.ensure(widget.device);
+    }
   }
 
   /// 插件市场: the marketplace is managed by the desktop app (the remote
@@ -2305,5 +2321,117 @@ class _ConnectionBanner extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// AssistiveTouch-style floating refresh ball for the task list: a
+/// semi-transparent orb that floats above the list, can be dragged and
+/// snaps to the nearest screen edge, and reloads workspaces/tasks on tap.
+class _AssistiveRefreshBall extends StatefulWidget {
+  final Future<void> Function() onRefresh;
+
+  const _AssistiveRefreshBall({required this.onRefresh});
+
+  @override
+  State<_AssistiveRefreshBall> createState() => _AssistiveRefreshBallState();
+}
+
+class _AssistiveRefreshBallState extends State<_AssistiveRefreshBall> {
+  static const _size = 46.0;
+  static const _margin = 10.0;
+
+  Offset? _pos;
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Positioned.fill sits directly under the page Stack (component widgets
+    // are transparent to the parent-data check); the ball's own Positioned
+    // lives inside an inner Stack below the LayoutBuilder.
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxW = constraints.maxWidth;
+            final maxH = constraints.maxHeight;
+            final pos = _pos ?? Offset(maxW - _size / 2 - _margin, maxH * 0.42);
+            final clamped = Offset(
+              pos.dx.clamp(_size / 2 + 2, maxW - _size / 2 - 2),
+              pos.dy.clamp(_size / 2 + 2, maxH - _size / 2 - 2),
+            );
+            final dark = Theme.of(context).brightness == Brightness.dark;
+            return Stack(
+              children: [
+                Positioned(
+                  left: clamped.dx - _size / 2,
+                  top: clamped.dy - _size / 2,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _busy ? null : _tap,
+                    onPanUpdate: (d) =>
+                        setState(() => _pos = clamped + d.delta),
+                    onPanEnd: (_) => setState(() {
+                      if (_pos == null) return;
+                      // Snap to the nearest horizontal edge (AssistiveTouch
+                      // feel) so the ball never rests over list content.
+                      final nearLeft = clamped.dx < maxW / 2;
+                      _pos = Offset(
+                        nearLeft
+                            ? _size / 2 + _margin
+                            : maxW - _size / 2 - _margin,
+                        clamped.dy,
+                      );
+                    }),
+                    child: Opacity(
+                      opacity: 0.75,
+                      child: Container(
+                        width: _size,
+                        height: _size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: dark
+                              ? Colors.white.withValues(alpha: 0.14)
+                              : Colors.black.withValues(alpha: 0.10),
+                          border: Border.all(
+                            color: dark
+                                ? Colors.white.withValues(alpha: 0.22)
+                                : Colors.black.withValues(alpha: 0.14),
+                          ),
+                        ),
+                        child: Center(
+                          child: _busy
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.refresh,
+                                  size: 24,
+                                  color: ZInk.solid(context),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _tap() async {
+    setState(() => _busy = true);
+    try {
+      await widget.onRefresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }

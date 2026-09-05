@@ -1081,17 +1081,47 @@ class DeviceSession extends ChangeNotifier
     }
     final sub = await _requireConversation.subscribe(sessionId);
     _chatSubs[sessionId] = sub;
+    _chatWorkspaceKeys[sessionId] = workspaceKeyOf(_activeWorkspace ?? const {});
     return ChatHandle(
       state: sub.state,
       close: () async {
         if (_chatSubs[sessionId] == sub) {
           _chatSubs.remove(sessionId);
+          _chatWorkspaceKeys.remove(sessionId);
           await sub.dispose();
         }
       },
       onResync: ({bool forceSnapshot = false}) =>
           sub.resync(forceSnapshot: forceSnapshot),
     );
+  }
+
+  /// Home workspace key per subscribed chat session (captured at subscribe
+  /// time) so sends can be re-pointed when the active workspace drifts.
+  final Map<String, String?> _chatWorkspaceKeys = {};
+
+  /// Re-points the workspace bridge when the chat's home workspace no longer
+  /// matches the active one. Drift happens when the link self-heals
+  /// (suspend clears the active workspace and connect() auto-opens the
+  /// preferred one) while a chat page is still open — the next send would
+  /// then register the session under a foreign workspace on the desktop
+  /// (the "same session in two workspaces" bug).
+  Future<void> _ensureChatWorkspace(String sessionId) async {
+    final expected = _chatWorkspaceKeys[sessionId];
+    if (expected == null) return;
+    final current = workspaceKeyOf(_activeWorkspace ?? const {});
+    if (current == expected) return;
+    Map<String, dynamic>? target;
+    for (final ws in _workspaces) {
+      if (workspaceKeyOf(ws) == expected) {
+        target = ws;
+        break;
+      }
+    }
+    if (target == null) {
+      throw StateError('会话所属工作区当前不可用，请回到任务列表重试');
+    }
+    await openWorkspace(target, taskId: sessionId);
   }
 
   @override
@@ -1126,39 +1156,53 @@ class DeviceSession extends ChangeNotifier
     String text, {
     List<Map<String, dynamic>>? attachments,
     String? heldQueueDisposition,
-  }) => _requireConversation.sendText(
-    sessionId,
-    text,
-    attachments: attachments,
-    heldQueueDisposition: heldQueueDisposition,
-  );
+  }) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.sendText(
+      sessionId,
+      text,
+      attachments: attachments,
+      heldQueueDisposition: heldQueueDisposition,
+    );
+  }
 
   @override
   Future<dynamic> sendGoalCommand(
     String sessionId,
     String text, {
     String? heldQueueDisposition,
-  }) => _requireConversation.sendGoalCommand(
-    sessionId,
-    text,
-    heldQueueDisposition: heldQueueDisposition,
-  );
+  }) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.sendGoalCommand(
+      sessionId,
+      text,
+      heldQueueDisposition: heldQueueDisposition,
+    );
+  }
 
   @override
-  Future<dynamic> stop(String sessionId) =>
-      _requireConversation.stop(sessionId);
+  Future<dynamic> stop(String sessionId) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.stop(sessionId);
+  }
 
   @override
-  Future<dynamic> compact(String sessionId) =>
-      _requireConversation.compact(sessionId);
+  Future<dynamic> compact(String sessionId) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.compact(sessionId);
+  }
 
   @override
-  Future<dynamic> pauseGoal(String sessionId) =>
-      _requireConversation.pauseGoal(sessionId);
+  Future<dynamic> pauseGoal(String sessionId) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.pauseGoal(sessionId);
+  }
 
   @override
-  Future<dynamic> resumeGoal(String sessionId) =>
-      _requireConversation.resumeGoal(sessionId);
+  Future<dynamic> resumeGoal(String sessionId) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.resumeGoal(sessionId);
+  }
 
   @override
   Future<dynamic> switchModelConfig(
@@ -1166,27 +1210,37 @@ class DeviceSession extends ChangeNotifier
     required String provider,
     required String model,
     required String thought,
-  }) => _requireConversation.switchModelConfig(
-    sessionId,
-    provider: provider,
-    model: model,
-    thought: thought,
-  );
+  }) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.switchModelConfig(
+      sessionId,
+      provider: provider,
+      model: model,
+      thought: thought,
+    );
+  }
 
   @override
-  Future<dynamic> switchCollaborationMode(String sessionId, String mode) =>
-      _requireConversation.switchCollaborationMode(sessionId, mode);
+  Future<dynamic> switchCollaborationMode(String sessionId, String mode) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.switchCollaborationMode(sessionId, mode);
+  }
 
   @override
-  Future<dynamic> setFollowupMode(String sessionId, String mode) =>
-      _requireConversation.setFollowupMode(sessionId, mode);
+  Future<dynamic> setFollowupMode(String sessionId, String mode) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.setFollowupMode(sessionId, mode);
+  }
 
   @override
   Future<dynamic> setAssistantFeedback(
     String sessionId,
     Map<String, dynamic> target,
     String? feedback,
-  ) => _requireConversation.setAssistantFeedback(sessionId, target, feedback);
+  ) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.setAssistantFeedback(sessionId, target, feedback);
+  }
 
   @override
   Future<dynamic> resolveInteraction(
@@ -1196,14 +1250,17 @@ class DeviceSession extends ChangeNotifier
     String? freeText,
     String? action,
     Map<String, dynamic>? content,
-  }) => _requireConversation.resolveInteraction(
-    sessionId,
-    interactionId,
-    optionId: optionId,
-    freeText: freeText,
-    action: action,
-    content: content,
-  );
+  }) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.resolveInteraction(
+      sessionId,
+      interactionId,
+      optionId: optionId,
+      freeText: freeText,
+      action: action,
+      content: content,
+    );
+  }
 
   @override
   Future<dynamic> rowsRange(
@@ -1238,8 +1295,10 @@ class DeviceSession extends ChangeNotifier
   }) => _requireConversation.attachmentRead(sessionId, ref: ref);
 
   @override
-  Future<dynamic> sendQueuedNow(String sessionId, String queueItemId) =>
-      _requireConversation.sendQueuedNow(sessionId, queueItemId);
+  Future<dynamic> sendQueuedNow(String sessionId, String queueItemId) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.sendQueuedNow(sessionId, queueItemId);
+  }
 
   @override
   Future<dynamic> editQueueItem(
@@ -1286,21 +1345,29 @@ class DeviceSession extends ChangeNotifier
   }) => _requireConversation.fileChanges(sessionId, target: target);
 
   @override
-  Future<dynamic> retryTurn(String sessionId, Map<String, dynamic> target) =>
-      _requireConversation.retryTurn(sessionId, target);
+  Future<dynamic> retryTurn(String sessionId, Map<String, dynamic> target) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.retryTurn(sessionId, target);
+  }
 
   @override
   Future<dynamic> forkAssistant(
     String sessionId,
     Map<String, dynamic> target,
-  ) => _requireConversation.forkAssistant(sessionId, target);
+  ) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.forkAssistant(sessionId, target);
+  }
 
   @override
   Future<dynamic> editUserQuery(
     String sessionId,
     Map<String, dynamic> target,
     String newText,
-  ) => _requireConversation.editUserQuery(sessionId, target, newText);
+  ) async {
+    await _ensureChatWorkspace(sessionId);
+    return _requireConversation.editUserQuery(sessionId, target, newText);
+  }
 
   @override
   Future<dynamic> applyFileRewind(
