@@ -15,6 +15,17 @@ import 'markdown_view.dart';
 import 'goal_panel.dart';
 import 'mention_sheet.dart';
 
+/// Successful command-ack vocabulary shared by the send path and the config
+/// sheet: 'noop'/'duplicate' mean the desktop applied (or already had) the
+/// change. Treating them as rejections left the sheet open while the switch
+/// had actually gone through.
+bool chatAckRejected(dynamic res) =>
+    res is Map &&
+    res['status'] != null &&
+    res['status'] != 'accepted' &&
+    res['status'] != 'noop' &&
+    res['status'] != 'duplicate';
+
 /// Native chat view for one task (session), backed by Conversation V4 over
 /// [ChatGateway]. Draft mode (no [sessionId]): the first message issues
 /// `createSession` with the draft model/mode/thought config.
@@ -659,12 +670,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  bool _ackRejected(dynamic res) =>
-      res is Map &&
-      res['status'] != null &&
-      res['status'] != 'accepted' &&
-      res['status'] != 'noop' &&
-      res['status'] != 'duplicate';
+  bool _ackRejected(dynamic res) => chatAckRejected(res);
 
   String _ackReason(dynamic res) {
     if (res is! Map) return '$res';
@@ -4737,9 +4743,7 @@ class _ModelModeSheet extends StatelessWidget {
     try {
       final res = await run();
       if (context.mounted) {
-        if (res is Map &&
-            res['status'] != null &&
-            res['status'] != 'accepted') {
+        if (chatAckRejected(res)) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(

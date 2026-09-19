@@ -219,13 +219,19 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   Future<dynamic> resumeGoal(String sessionId) async =>
       _rec('resumeGoal', [sessionId]);
 
+  /// Ack returned by switchModelConfig (defaults to an accepted record).
+  Object? switchModelAck;
+
   @override
   Future<dynamic> switchModelConfig(
     String sessionId, {
     required String provider,
     required String model,
     required String thought,
-  }) async => _rec('switchModelConfig', [sessionId, provider, model, thought]);
+  }) async {
+    final rec = _rec('switchModelConfig', [sessionId, provider, model, thought]);
+    return switchModelAck ?? rec;
+  }
 
   @override
   Future<dynamic> switchCollaborationMode(String sessionId, String mode) =>
@@ -601,6 +607,39 @@ void main() {
     expect(
       gateway.calls.firstWhere((c) => c.$1 == 'ensureHomeWorkspace').$2,
       ['beta'],
+    );
+  });
+
+  testWidgets('model sheet closes on a noop ack (the switch went through)', (
+    tester,
+  ) async {
+    final gateway = FakeChatGateway()..switchModelAck = {'status': 'noop'};
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
+    // Non-draft sheet needs a live model on file for the composer chip.
+    gateway.snapshotExtra = {
+      'config': {'provider': 'builtin', 'model': 'builtin/glm-5.2'},
+    };
+    gateway.feedSnapshot(
+      [
+        {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.memory_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('模型与模式'), findsOneWidget);
+
+    await tester.tap(find.text('GLM-5.2 Air'));
+    await tester.pumpAndSettle();
+    // 'noop' means the desktop applied (or already had) the change — the
+    // sheet must close, not sit there as if the switch were rejected.
+    expect(find.text('模型与模式'), findsNothing);
+    expect(
+      gateway.calls.where((c) => c.$1 == 'switchModelConfig'),
+      isNotEmpty,
     );
   });
 
