@@ -982,12 +982,27 @@ class _TaskListPageState extends State<TaskListPage> {
     );
   }
 
-  /// AssistiveTouch-style floating ball action: one tap reloads the
-  /// workspace/task list without hunting through menus.
+  /// AssistiveTouch-style floating ball action: soft-reload the workspace/
+  /// task list first, and when the link is wedged (soft reload times out or
+  /// the live index never comes back) escalate to a full reconnect right
+  /// away — the "quit and re-enter" this ball used to leave to the user.
   Future<void> _refreshFromBall() async {
     final session = _session;
     if (session != null) {
-      await session.reloadTasks();
+      try {
+        await session.reloadTasks().timeout(const Duration(seconds: 12));
+      } catch (_) {
+        await session.reconnect();
+        return;
+      }
+      if (session.workspaces.isEmpty) return;
+      // Index snapshot frames arrive asynchronously after the re-open —
+      // give them a short grace window before declaring the link wedged.
+      for (var i = 0; i < 10; i++) {
+        if (session.sessions?.ready == true && session.error == null) return;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      await session.reconnect();
     } else {
       await widget.hub.ensure(widget.device);
     }
@@ -2474,6 +2489,7 @@ class _AssistiveRefreshBallState extends State<_AssistiveRefreshBall> {
                                 )
                               : Icon(
                                   Icons.refresh,
+                                  key: const ValueKey('assistive-ball-refresh'),
                                   size: 24,
                                   color: ZInk.solid(context),
                                 ),

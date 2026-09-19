@@ -213,15 +213,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// the subscription entirely — the exact path of leaving and re-entering
   /// the chat, guaranteed to land a full snapshot. A plain protocol resync
   /// is only a fallback: it depends on the desktop pushing a snapshot frame
-  /// back, which does not cover every failure mode.
-  Future<void> _refreshLatest() async {
+  /// back, which does not cover every failure mode. When the link is wedged
+  /// past even that, force a full reconnect — the "quit and re-enter" this
+  /// ball used to leave to the user (the gateway-changed listener then
+  /// re-subscribes on its own).
+  Future<void> _refreshLatest({
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
     final sessionId = _sessionId;
     if (sessionId == null || _refreshing) return;
     setState(() => _refreshing = true);
     try {
       final handle = await widget.gateway
           .resubscribe(sessionId)
-          .timeout(const Duration(seconds: 60));
+          .timeout(timeout);
       if (!mounted) {
         await handle.close();
         return;
@@ -240,7 +245,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // Rebuild failed (link down etc.) — at least try the light-weight
       // protocol resync on the still-attached subscription.
       try {
-        await _handle?.resync(forceSnapshot: true);
+        await _handle?.resync(forceSnapshot: true).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      try {
+        await widget.gateway.reconnect();
       } catch (_) {}
     } finally {
       if (mounted) setState(() => _refreshing = false);
@@ -1300,7 +1308,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     bottom: 14,
                     child: _RefreshBall(
                       busy: _refreshing,
-                      onTap: _refreshLatest,
+                      // Tap wants a fast verdict: a wedged link must not
+                      // keep the ball spinning for the full 60s resume
+                      // budget before the reconnect kicks in.
+                      onTap: () => _refreshLatest(
+                          timeout: const Duration(seconds: 15)),
                     ),
                   ),
               ],

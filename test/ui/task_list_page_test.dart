@@ -781,4 +781,62 @@ void main() {
       'beta',
     );
   });
+
+  testWidgets(
+      'refresh ball escalates to reconnect when the index never readies',
+      (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: const [],
+      workspaces: [
+        {'workspacePath': '/repo/app'},
+      ],
+      sessionsReady: false,
+    );
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byKey(const ValueKey('assistive-ball-refresh')));
+    // Soft reload returns but the index snapshot never lands — after the
+    // 2s grace window the ball must force the full reconnect itself.
+    await tester.pump(const Duration(milliseconds: 2200));
+    expect(session.reconnectCalls, 1);
+  });
+
+  testWidgets('refresh ball escalates to reconnect when reload hangs',
+      (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: const [],
+      workspaces: [
+        {'workspacePath': '/repo/app'},
+      ],
+      hangReload: true,
+    );
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byKey(const ValueKey('assistive-ball-refresh')));
+    // The 12s reload timeout fires on the fake clock, then reconnect.
+    await tester.pump(const Duration(seconds: 12));
+    expect(session.reconnectCalls, 1);
+  });
 }

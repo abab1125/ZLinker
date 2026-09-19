@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:zlinker/protocol/conversation.dart';
 import 'package:zlinker/state/device_session.dart';
 
@@ -21,16 +23,20 @@ class FakeDeviceSession extends DeviceSession {
     this.chatRows = const [],
     this.snapshotExtra = const {},
     this.channelHandler,
+    this.sessionsReady = true,
+    this.hangReload = false,
   }) : status = DeviceStatus.connected,
        sessions = SessionsIndexState(),
        super() {
-    sessions.applyFrame({
-      'toSeq': 1,
-      'payload': {
-        'kind': 'snapshot',
-        'snapshot': {'workspaceId': 'ws-1', 'sessions': entries},
-      },
-    }, onGap: () {});
+    if (sessionsReady) {
+      sessions.applyFrame({
+        'toSeq': 1,
+        'payload': {
+          'kind': 'snapshot',
+          'snapshot': {'workspaceId': 'ws-1', 'sessions': entries},
+        },
+      }, onGap: () {});
+    }
     _workspaces = workspaces;
     _active = workspaces.isEmpty ? null : workspaces.first;
   }
@@ -88,11 +94,27 @@ class FakeDeviceSession extends DeviceSession {
     };
   }
 
-  @override
-  Future<void> reloadTasks() async {}
-
   /// Workspaces the page tried to switch to, in order.
   final List<Map<String, dynamic>> openWorkspaceCalls = [];
+
+  /// When false the seeded index never becomes ready (wedged-link case).
+  final bool sessionsReady;
+
+  /// When true reloadTasks never completes (a wedged bootstrap RPC).
+  final bool hangReload;
+
+  int reconnectCalls = 0;
+
+  @override
+  Future<void> reconnect() async {
+    reconnectCalls += 1;
+  }
+
+  @override
+  Future<void> reloadTasks() {
+    if (hangReload) return Completer<void>().future;
+    return Future.value();
+  }
 
   @override
   Future<void> openWorkspace(
