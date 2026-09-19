@@ -914,22 +914,25 @@ class DeviceSession extends ChangeNotifier
     }
   }
 
-  Future<void> stopTask(String sessionId) async {
+  /// These three are V4 envelope commands: the ack ({status: ...}) flows
+  /// back to the caller so the task list can toast rejections — throwing is
+  /// reserved for link-level failures.
+  Future<dynamic> stopTask(String sessionId) async {
     final conv = _conversation;
     if (conv == null) throw StateError('not connected');
-    await conv.stop(sessionId);
+    return conv.stop(sessionId);
   }
 
-  Future<void> pauseTask(String sessionId) async {
+  Future<dynamic> pauseTask(String sessionId) async {
     final conv = _conversation;
     if (conv == null) throw StateError('not connected');
-    await conv.pauseGoal(sessionId);
+    return conv.pauseGoal(sessionId);
   }
 
-  Future<void> resumeTask(String sessionId) async {
+  Future<dynamic> resumeTask(String sessionId) async {
     final conv = _conversation;
     if (conv == null) throw StateError('not connected');
-    await conv.resumeGoal(sessionId);
+    return conv.resumeGoal(sessionId);
   }
 
   /// Raw channel RPC over the active workspace bridge (usage-stats,

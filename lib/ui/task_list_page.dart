@@ -2110,9 +2110,23 @@ class _TaskListPageState extends State<TaskListPage> {
     widget.hub.scheduleResume(widget.device);
   }
 
-  Future<void> _runOp(Future<void> Function() op) async {
+  Future<void> _runOp(Future<dynamic> Function() op) async {
     try {
-      await op();
+      final res = await op();
+      // V4 envelope commands (stop/pause/resume) report business failure
+      // through {status: rejected|stale|failed} instead of throwing; the
+      // plain channel RPCs (rename/pin/archive/…) just resolve — for those
+      // ackRejected is trivially false. Surface the former: a rejected stop
+      // used to look like nothing happening.
+      if (ackRejected(res)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'tasks.opFailed',
+                ['${res['reasonCode'] ?? res['status']}'])),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

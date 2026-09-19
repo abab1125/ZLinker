@@ -151,7 +151,9 @@ class AutomationPort {
   /// Triggers one immediate run (立即运行). [scope] carries
   /// `{workspacePath, workspaceIdentity?}` of the active workspace — the
   /// desktop requires it server-side. Returns 'queued' on acceptance or
-  /// 'duplicate' when a run is already in flight; any rejection throws.
+  /// 'duplicate' when a run is already in flight; anything else
+  /// (rejected/stale/failed…) throws so the UI toasts a failure instead of
+  /// a success.
   Future<String> runNow(String id, Map<String, dynamic> scope) async {
     final res = await _probe.run('runNow', _runNowMethods,
         argsOf: (_) => [
@@ -161,6 +163,13 @@ class AutomationPort {
               },
             ]);
     final status = res is Map ? '${res['status'] ?? ''}' : '';
+    if (status.isNotEmpty &&
+        status != 'queued' &&
+        status != 'accepted' &&
+        status != 'duplicate') {
+      throw StateError(
+          '${res is Map ? (res['reasonCode'] ?? status) : status}');
+    }
     return status == 'duplicate' ? 'duplicate' : 'queued';
   }
 }

@@ -986,7 +986,7 @@ class _OffPeakSheetState extends State<OffPeakSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(tr(context, 'op.fullAccessHint'))));
       }
-      await widget.session.offPeak.submit(OffPeakSubmitInput(
+      final result = await widget.session.offPeak.submit(OffPeakSubmitInput(
         prompt: _prompt.text,
         workspacePath: workspacePath,
         workspaceIdentity: scope['workspaceIdentity'] as String?,
@@ -997,6 +997,14 @@ class _OffPeakSheetState extends State<OffPeakSheet> {
         title: _title.text.trim().isEmpty ? null : _title.text.trim(),
       ));
       if (!mounted) return;
+      // The server can answer inline with {ok: false, error} (a normal RPC
+      // resolution, not a throw) — that must not read as 已创建.
+      if (!result.ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(trP(context, 'op.err.other',
+                [result.error ?? 'unknown']))));
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(tr(context, 'op.created'))));
       Navigator.pop(context);

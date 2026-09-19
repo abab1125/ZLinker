@@ -1282,6 +1282,18 @@ class SessionEntry {
   }
 }
 
+/// Successful V4 command-ack statuses are `accepted|noop|duplicate`
+/// (sendCommand above; docs/parity/web-capabilities.md) — 'noop'/'duplicate'
+/// mean the desktop applied (or already had) the change. Anything else with
+/// a status is a failure and must surface to the user instead of looking
+/// like a silent no-op.
+bool ackRejected(dynamic res) =>
+    res is Map &&
+    res['status'] != null &&
+    res['status'] != 'accepted' &&
+    res['status'] != 'noop' &&
+    res['status'] != 'duplicate';
+
 class SessionsIndexState extends ChangeNotifier {
   String? workspaceId;
   String? logEpoch;

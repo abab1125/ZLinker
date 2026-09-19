@@ -103,6 +103,10 @@ class FakeDeviceSession extends DeviceSession {
   /// When true reloadTasks never completes (a wedged bootstrap RPC).
   final bool hangReload;
 
+  /// Ack returned by stopTask — exercise the task-list toast path for a
+  /// rejected V4 envelope command.
+  Object? stopAck;
+
   int reconnectCalls = 0;
 
   @override
@@ -115,6 +119,9 @@ class FakeDeviceSession extends DeviceSession {
     if (hangReload) return Completer<void>().future;
     return Future.value();
   }
+
+  @override
+  Future<dynamic> stopTask(String sessionId) async => stopAck;
 
   @override
   Future<void> openWorkspace(

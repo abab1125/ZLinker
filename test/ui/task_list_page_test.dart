@@ -240,6 +240,45 @@ void main() {
     expect(find.text('恢复'), findsOneWidget);
   });
 
+  testWidgets('task stop surfaces a rejected ack as a toast', (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: [
+        {
+          'sessionId': 's1',
+          'title': '修复登录',
+          'phase': 'running',
+          'lastActivityAt': DateTime.now().millisecondsSinceEpoch,
+        },
+      ],
+      workspaces: [
+        {'workspacePath': '/repo/app'},
+      ],
+    )..stopAck = {'status': 'rejected', 'reasonCode': 'already-stopped'};
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.longPress(find.text('修复登录'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('停止'));
+    // finite pumps: the running pill's spinner never settles
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // A rejected V4 stop used to vanish silently — now it toasts.
+    expect(find.textContaining('操作失败'), findsOneWidget);
+  });
+
   testWidgets('the latest running task row gets the official highlight',
       (tester) async {
     usePhone(tester);

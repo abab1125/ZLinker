@@ -17,8 +17,10 @@ import '../ui_settings.dart';
 /// `plan` ({items:[{content, status}]}).
 class GoalPanel extends StatefulWidget {
   final ConversationState state;
-  final Future<void> Function(String sessionId) onPauseGoal;
-  final Future<void> Function(String sessionId) onResumeGoal;
+  /// The pause/resume ack (`{status: ...}` map) flows through so rejections
+  /// can toast — a void-typed future used to hide it.
+  final Future<dynamic> Function(String sessionId) onPauseGoal;
+  final Future<dynamic> Function(String sessionId) onResumeGoal;
 
   const GoalPanel({
     super.key,
@@ -76,7 +78,25 @@ class _GoalPanelState extends State<GoalPanel> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await (paused ? widget.onResumeGoal(sessionId) : widget.onPauseGoal(sessionId));
+      final res = await (paused
+          ? widget.onResumeGoal(sessionId)
+          : widget.onPauseGoal(sessionId));
+      // The ack used to be dropped and exceptions silently escaped — a
+      // rejected pause/resume looked like nothing happening.
+      if (ackRejected(res) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'chat.op.failed',
+                ['${res['reasonCode'] ?? res['status']}'])),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(trP(context, 'chat.op.failed', ['$e']))),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

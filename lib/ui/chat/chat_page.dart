@@ -15,17 +15,6 @@ import 'markdown_view.dart';
 import 'goal_panel.dart';
 import 'mention_sheet.dart';
 
-/// Successful command-ack vocabulary shared by the send path and the config
-/// sheet: 'noop'/'duplicate' mean the desktop applied (or already had) the
-/// change. Treating them as rejections left the sheet open while the switch
-/// had actually gone through.
-bool chatAckRejected(dynamic res) =>
-    res is Map &&
-    res['status'] != null &&
-    res['status'] != 'accepted' &&
-    res['status'] != 'noop' &&
-    res['status'] != 'duplicate';
-
 /// Native chat view for one task (session), backed by Conversation V4 over
 /// [ChatGateway]. Draft mode (no [sessionId]): the first message issues
 /// `createSession` with the draft model/mode/thought config.
@@ -458,18 +447,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _run(String errorPrefix, Future<dynamic> Function() run) async {
+  Future<bool> _run(String errorPrefix, Future<dynamic> Function() run) async {
     try {
       final res = await run();
-      if (res is Map &&
-          res['status'] != null &&
-          res['status'] != 'accepted' &&
-          res['status'] != 'noop') {
+      if (ackRejected(res)) {
         _toast('$errorPrefix: ${res['reasonCode'] ?? res['status']}');
+        return false;
       }
+      return true;
     } catch (e) {
-      final business = businessErrorCopy('$e', () => tr(context, 'common.retryLater'));
+      final business = businessErrorCopy(
+        '$e',
+        () => tr(context, 'common.retryLater'),
+      );
       _toast(business ?? '$errorPrefix: $e');
+      return false;
     }
   }
 
@@ -628,7 +620,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           text.substring('/goal '.length).trim(),
           heldQueueDisposition: heldDisposition,
         );
-        if (_ackRejected(res)) {
+        if (ackRejected(res)) {
           if (mounted) {
             _toast(trP(context, 'chat.send.failed', [_ackReason(res)]));
           }
@@ -649,7 +641,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         attachments: attachments,
         heldQueueDisposition: heldDisposition,
       );
-      if (_ackRejected(res)) {
+      if (ackRejected(res)) {
         if (mounted) {
           _toast(trP(context, 'chat.send.failed', [_ackReason(res)]));
         }
@@ -669,8 +661,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     }
   }
-
-  bool _ackRejected(dynamic res) => chatAckRejected(res);
 
   String _ackReason(dynamic res) {
     if (res is! Map) return '$res';
@@ -952,7 +942,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   /// The "更多" dropdown actions (official second header row).
-  void _onMoreMenu(String action) {
+  Future<void> _onMoreMenu(String action) async {
     final sessionId = _sessionId;
     switch (action) {
       case 'rename':
@@ -960,11 +950,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case 'pin':
         if (sessionId != null) {
           final target = !_pinned;
-          _run(
+          // Flip the icon only when the ack agrees — a rejected pin used to
+          // leave the local state opposite the desktop until a push fixed it.
+          final ok = await _run(
             tr(context, 'tasks.opFailed'),
             () => widget.gateway.setTaskPinned(sessionId, target),
           );
-          setState(() => _pinned = target);
+          if (ok && mounted) setState(() => _pinned = target);
         }
       case 'archive':
         if (sessionId != null) {
@@ -1036,11 +1028,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _run(
+    final ok = await _run(
       tr(context, 'tasks.opFailed'),
       () => widget.gateway.deleteSession(sessionId),
     );
-    if (mounted) Navigator.of(context).maybePop();
+    // A rejected delete must not throw the user out of the chat they came
+    // here to delete.
+    if (ok && mounted) Navigator.of(context).maybePop();
   }
 
   /// Official web order: pin toggle / rename / archive / unread, then the
@@ -2258,10 +2252,18 @@ class _UserBubbleState extends State<_UserBubble> {
     controller.dispose();
     if (newText == null || newText.isEmpty || !context.mounted) return;
     try {
-      await widget.gateway.editUserQuery(widget.sessionId, {
+      final res = await widget.gateway.editUserQuery(widget.sessionId, {
         'rowId': widget.row['rowId'],
         if (widget.row['entityId'] != null) 'entityId': widget.row['entityId'],
       }, newText);
+      if (context.mounted && ackRejected(res)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'chat.action.edit.failed',
+                ['${res['reasonCode'] ?? res['status']}'])),
+          ),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4025,13 +4027,28 @@ class _InteractionCardState extends State<_InteractionCard> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await widget.onResolve(
+      final res = await widget.onResolve(
         optionId: optionId,
         freeText: freeText,
         action: action,
         content: content,
       );
-    } catch (_) {
+      // Success clears the card via the state push; a rejected/failed ack
+      // must say so — the card used to swallow the answer and sit there.
+      if (ackRejected(res) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'chat.op.failed',
+                ['${res['reasonCode'] ?? res['status']}'])),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(trP(context, 'chat.op.failed', ['$e']))),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -4743,7 +4760,7 @@ class _ModelModeSheet extends StatelessWidget {
     try {
       final res = await run();
       if (context.mounted) {
-        if (chatAckRejected(res)) {
+        if (ackRejected(res)) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -5333,7 +5350,8 @@ class _InputBarState extends State<_InputBar> {
     );
     if (value == null || value == _modeValue) return;
     if (isDraft || sid == null) return; // draft chips go through the sheet
-    gateway.switchCollaborationMode(sid, value);
+    if (!context.mounted) return;
+    await _ackToast(context, gateway.switchCollaborationMode(sid, value));
   }
 
   Future<void> _pickThought(BuildContext context) async {
@@ -5366,21 +5384,48 @@ class _InputBarState extends State<_InputBar> {
     );
     if (value == null || value == _thoughtLabel) return;
     if (isDraft || sid == null) return; // draft chips go through the sheet
+    if (!context.mounted) return;
     final modelValue =
         '${state?.config?['provider'] ?? ''}/${state?.config?['model'] ?? ''}';
     final idx = modelValue.lastIndexOf('/');
-    gateway.switchModelConfig(
-      sid,
-      provider: idx > 0 ? modelValue.substring(0, idx) : modelValue,
-      model: idx > 0 ? modelValue.substring(idx + 1) : modelValue,
-      thought: value,
+    await _ackToast(
+      context,
+      gateway.switchModelConfig(
+        sid,
+        provider: idx > 0 ? modelValue.substring(0, idx) : modelValue,
+        model: idx > 0 ? modelValue.substring(idx + 1) : modelValue,
+        thought: value,
+      ),
     );
   }
 
-  void _stop(BuildContext context) {
+  /// Await one fire-and-forget command and toast on a rejected/failed ack —
+  /// these used to drop the answer entirely, so a rejected switch looked
+  /// exactly like nothing happening.
+  Future<void> _ackToast(BuildContext context, Future<dynamic> run) async {
+    try {
+      final res = await run;
+      if (context.mounted && ackRejected(res)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(trP(context, 'chat.op.failed',
+                ['${res['reasonCode'] ?? res['status']}'])),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(trP(context, 'chat.op.failed', ['$e']))),
+        );
+      }
+    }
+  }
+
+  Future<void> _stop(BuildContext context) async {
     final sid = sessionId;
     if (sid == null) return;
-    gateway.stop(sid);
+    await _ackToast(context, gateway.stop(sid));
   }
 }
 
