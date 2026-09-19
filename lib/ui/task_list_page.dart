@@ -114,6 +114,7 @@ class _TaskListPageState extends State<TaskListPage> {
   String? _paneTitle;
   String? _paneInitialComposerText;
   bool _panePinned = false;
+  String? _paneHomeWorkspaceKey;
 
   /// Official breakpoint: Tailwind md — single column below, dual ≥768.
   static const double kDualPaneBreakpoint = 768;
@@ -164,11 +165,17 @@ class _TaskListPageState extends State<TaskListPage> {
     });
   }
 
-  /// Official 整理任务 ordering: 更新时间 = lastActivityAt (device default),
-  /// 创建时间 = createdAt.
+  /// Official 整理任务 ordering: 更新时间 = lastActivityAt, 创建时间 = createdAt
+  /// (both newest first). Both sort explicitly — the relay overview and the
+  /// merged timeline source keep desktop insertion order, not either of these.
   List<SessionEntry> _sortedEntries(List<SessionEntry> entries) {
-    if (_sortBy != 'created') return entries;
-    return [...entries]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final sorted = [...entries];
+    if (_sortBy == 'created') {
+      sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } else {
+      sorted.sort((a, b) => b.lastActivityAt.compareTo(a.lastActivityAt));
+    }
+    return sorted;
   }
 
   // ------------------------------------------------- merged task data source
@@ -213,6 +220,36 @@ class _TaskListPageState extends State<TaskListPage> {
         if (_relayTaskKey(t) == key && (t['archived'] == true) == archivedOnly)
           SessionEntry.fromRelayTask(t),
     ];
+  }
+
+  /// Non-archived entries a workspace card shows: the live sessions-index
+  /// for the active workspace, the relay overview for the rest.
+  List<SessionEntry> _cardEntries(
+    DeviceSession session,
+    Map<String, dynamic> ws,
+  ) {
+    final isActive = _isWorkspaceActive(session, ws);
+    final sessions = isActive ? session.sessions : null;
+    final raw = sessions?.ready == true
+        ? sessions!.list
+        : _relayEntriesFor(session, ws);
+    return [for (final e in raw) if (e.raw['archived'] != true) e];
+  }
+
+  /// Workspace cards follow the sort mode too: latest activity (更新时间) or
+  /// latest creation (创建时间) first, so a workspace whose task is actively
+  /// updating floats to the top instead of keeping desktop sidebar order.
+  List<Map<String, dynamic>> _sortedWorkspaces(DeviceSession session) {
+    int keyOf(Map<String, dynamic> ws) {
+      final entries = _cardEntries(session, ws);
+      if (entries.isEmpty) return 0;
+      return entries
+          .map((e) => _sortBy == 'created' ? e.createdAt : e.lastActivityAt)
+          .reduce((a, b) => a > b ? a : b);
+    }
+
+    return [...session.workspaces]
+      ..sort((a, b) => keyOf(b).compareTo(keyOf(a)));
   }
 
   /// Every non-archived task of the device as `(entry, workspace)` pairs —
@@ -734,6 +771,7 @@ class _TaskListPageState extends State<TaskListPage> {
       embedded: true,
       initialComposerText: _paneInitialComposerText,
       initialPinned: _panePinned,
+      homeWorkspaceKey: _paneHomeWorkspaceKey,
       workspaceLabel: session.activeWorkspace != null
           ? workspaceTitle(session.activeWorkspace!)
           : null,
@@ -924,7 +962,7 @@ class _TaskListPageState extends State<TaskListPage> {
             else if (_groupBy == 'timeline')
               ..._timelineGroups(context, session)
             else
-              for (final ws in session.workspaces)
+              for (final ws in _sortedWorkspaces(session))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _workspaceCard(context, session, ws),
@@ -1368,16 +1406,7 @@ class _TaskListPageState extends State<TaskListPage> {
     final expanded = _isWorkspaceExpanded(key, isActive: isActive);
 
     final sessions = isActive ? session.sessions : null;
-    // Active workspace: the live sessions-index (richer phase/interaction).
-    // Others: the relay task overview — the web mobile home does the same.
-    var entries = sessions?.ready == true
-        ? sessions!.list
-        : _relayEntriesFor(session, ws);
-    entries = [
-      for (final e in entries)
-        if (e.raw['archived'] != true) e,
-    ];
-    entries = _sortedEntries(entries);
+    var entries = _sortedEntries(_cardEntries(session, ws));
     final lastActivity = entries.isEmpty
         ? null
         : entries.map((e) => e.lastActivityAt).reduce((a, b) => a > b ? a : b);
@@ -1570,7 +1599,17 @@ class _TaskListPageState extends State<TaskListPage> {
     final newLabel = tr(context, 'tasks.new');
     Future<void> start() async {
       if (workspace != null && !_isWorkspaceActive(session, workspace)) {
-        await session.openWorkspace(workspace);
+        final target = workspace;
+        // openWorkspace swallows bridge failures — creating the draft while
+        // the old workspace is still active would register it under that
+        // one, so refuse to open the chat unless the switch really landed.
+        await _runOp(() async {
+          await session.openWorkspace(target);
+          if (!_isWorkspaceActive(session, target)) {
+            throw StateError('工作区打开失败，请稍后重试');
+          }
+        });
+        if (!_isWorkspaceActive(session, target)) return;
       }
       if (!mounted) return;
       await _openChat(title: newLabel);
@@ -1728,13 +1767,33 @@ class _TaskListPageState extends State<TaskListPage> {
     SessionEntry entry,
     String title,
   ) async {
+    // Live entries of the active workspace carry no workspace fields — the
+    // current bridge IS their home. Anything else without a resolvable
+    // workspace would be registered under whatever happens to be active.
+    final liveHome =
+        session.sessions?.ready == true &&
+        session.sessions!.list.any((e) => e.sessionId == entry.sessionId);
     workspace ??= _workspaceForKey(
       session,
       entry.raw['workspaceIdentity'] as String? ??
           entry.raw['workspacePath'] as String?,
     );
+    if (workspace == null && !liveHome) {
+      await _runOp(() async => throw StateError('找不到任务所属工作区'));
+      return;
+    }
     if (workspace != null && !_isWorkspaceActive(session, workspace)) {
-      await session.openWorkspace(workspace, taskId: entry.sessionId);
+      // openWorkspace swallows bridge failures — first-subscribing on the
+      // old bridge is exactly how a session ends up under a foreign
+      // workspace, so refuse to open the chat unless the switch landed.
+      final target = workspace;
+      await _runOp(() async {
+        await session.openWorkspace(target, taskId: entry.sessionId);
+        if (!_isWorkspaceActive(session, target)) {
+          throw StateError('工作区打开失败，请稍后重试');
+        }
+      });
+      if (!_isWorkspaceActive(session, target)) return;
     }
     if (!mounted) return;
     await _openChat(
@@ -1982,6 +2041,9 @@ class _TaskListPageState extends State<TaskListPage> {
       await _openRemote(targetSessionId: sessionId, targetTitle: title);
       return;
     }
+    // Capture the workspace this chat belongs to at open time — drafts pass
+    // it to createSession (they have no session id to look a home up with).
+    final homeKey = workspaceKeyOf(session.activeWorkspace ?? const {});
     await widget.store.touch(widget.device.id);
     if (!mounted) return;
     if (MediaQuery.sizeOf(context).width >= kDualPaneBreakpoint) {
@@ -1990,6 +2052,7 @@ class _TaskListPageState extends State<TaskListPage> {
         _paneTitle = title;
         _paneInitialComposerText = initialComposerText;
         _panePinned = pinned;
+        _paneHomeWorkspaceKey = homeKey;
       });
       return;
     }
@@ -2002,6 +2065,7 @@ class _TaskListPageState extends State<TaskListPage> {
           theme: widget.theme,
           initialComposerText: initialComposerText,
           initialPinned: pinned,
+          homeWorkspaceKey: homeKey,
           workspaceLabel: session.activeWorkspace != null
               ? workspaceTitle(session.activeWorkspace!)
               : null,

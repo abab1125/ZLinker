@@ -60,6 +60,10 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   @override
   Future<ChatHandle> resubscribe(String sessionId) => subscribe(sessionId);
 
+  @override
+  Future<void> ensureHomeWorkspace(String? workspaceKey) async =>
+      _rec('ensureHomeWorkspace', [workspaceKey]);
+
   dynamic _rec(String method, [List<Object?> args = const []]) {
     calls.add((method, args));
     return {'status': 'accepted'};
@@ -571,6 +575,33 @@ void main() {
         .single;
     expect(call.$2[0], 'ws-1');
     expect(call.$2[1], '开始分析');
+  });
+
+  testWidgets(
+      'draft with a home workspace re-points the bridge before createSession',
+      (tester) async {
+    final gateway = FakeChatGateway();
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, title: '新任务', homeWorkspaceKey: 'beta')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('输入消息开始新任务'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '开始分析');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final order = gateway.calls
+        .map((c) => c.$1)
+        .where((m) => m == 'ensureHomeWorkspace' || m == 'createSession')
+        .toList();
+    expect(order, ['ensureHomeWorkspace', 'createSession']);
+    expect(
+      gateway.calls.firstWhere((c) => c.$1 == 'ensureHomeWorkspace').$2,
+      ['beta'],
+    );
   });
 
   testWidgets('existing session: send goes through sendText', (tester) async {

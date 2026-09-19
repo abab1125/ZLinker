@@ -91,11 +91,15 @@ class FakeDeviceSession extends DeviceSession {
   @override
   Future<void> reloadTasks() async {}
 
+  /// Workspaces the page tried to switch to, in order.
+  final List<Map<String, dynamic>> openWorkspaceCalls = [];
+
   @override
   Future<void> openWorkspace(
     Map<String, dynamic> workspace, {
     String? taskId,
   }) async {
+    openWorkspaceCalls.add(workspace);
     _active = workspace;
     notifyListeners();
   }

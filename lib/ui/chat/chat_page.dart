@@ -39,6 +39,12 @@ class ChatPage extends StatefulWidget {
   /// can show 置顶任务 / 取消置顶任务 like the web and toggle it.
   final bool initialPinned;
 
+  /// Workspace the chat (or draft) belongs to. Drafts have no session id,
+  /// so the gateway can't look their home up before createSession — the
+  /// bridge is re-pointed there first, or a desktop link self-heal that
+  /// landed on another workspace would register the new session under it.
+  final String? homeWorkspaceKey;
+
   const ChatPage({
     super.key,
     required this.gateway,
@@ -49,6 +55,7 @@ class ChatPage extends StatefulWidget {
     this.initialComposerText,
     this.workspaceLabel,
     this.initialPinned = false,
+    this.homeWorkspaceKey,
   });
 
   @override
@@ -559,6 +566,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (sessionId == null) {
         // 1) create the session (can take a while when the runtime warms)
         setState(() => _progress = tr(context, 'chat.creating'));
+        // A link self-heal may have re-opened the bridge on another
+        // workspace — bring it back home before the session is created,
+        // or the desktop registers the new session under that workspace.
+        final noWorkspaceMsg = tr(context, 'tasks.noWorkspaces.title');
+        await widget.gateway.ensureHomeWorkspace(widget.homeWorkspaceKey);
         // Plain text first message is sent WITH createSession (firstInput,
         // mirrors the official composer). This avoids a send-before-subscribe
         // race where the first command can be dropped on a fresh session.
@@ -569,7 +581,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             heldDisposition == null;
         final workspaceId = widget.gateway.chatWorkspaceId;
         if (workspaceId == null || workspaceId.isEmpty) {
-          throw StateError(tr(context, 'tasks.noWorkspaces.title'));
+          throw StateError(noWorkspaceMsg);
         }
         sessionId = await widget.gateway.createSession(
           workspaceId,

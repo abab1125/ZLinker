@@ -641,4 +641,144 @@ void main() {
         .toList();
     expect(order, ['任务乙', '任务甲']);
   });
+
+  testWidgets('整理任务 panel: updated-time sorting orders timeline rows',
+      (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // 甲 was created last but went quiet a minute ago; 乙 is still being
+    // updated now — the two sort orders must disagree.
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: [
+        {
+          'sessionId': 's1',
+          'title': '任务甲',
+          'phase': 'completedSuccess',
+          'lastActivityAt': now - 60000,
+          'createdAt': now,
+        },
+        {
+          'sessionId': 's2',
+          'title': '任务乙',
+          'phase': 'completedSuccess',
+          'lastActivityAt': now,
+          'createdAt': now - 60000,
+        },
+      ],
+      workspaces: [
+        {'workspacePath': '/repo/alpha', 'workspaceIdentity': 'alpha'},
+      ],
+    );
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    Iterable<String> taskOrder() => tester
+        .widgetList<Text>(find.byWidgetPredicate((w) =>
+            w is Text && (w.data == '任务甲' || w.data == '任务乙')))
+        .map((t) => t.data!);
+
+    await tester.tap(find.byTooltip('整理任务'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('按时间线'));
+    await tester.pumpAndSettle();
+    // Default sort (更新时间): the still-updating 乙 comes first…
+    expect(taskOrder(), ['任务乙', '任务甲']);
+
+    // …while 创建时间 flips the order.
+    await tester.tap(find.text('创建时间'));
+    await tester.pumpAndSettle();
+    expect(taskOrder(), ['任务甲', '任务乙']);
+  });
+
+  testWidgets('workspace cards follow the sort mode (updated first)',
+      (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // alpha is active but its task went quiet an hour ago; beta's relay
+    // task is still updating — 更新时间 must float beta above alpha.
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: [
+        {
+          'sessionId': 's1',
+          'title': '任务甲',
+          'phase': 'completedSuccess',
+          'lastActivityAt': now - 3600000,
+          'createdAt': now - 1000,
+        },
+      ],
+      workspaces: [
+        {'workspacePath': '/repo/alpha', 'workspaceIdentity': 'alpha'},
+        {'workspacePath': '/repo/beta', 'workspaceIdentity': 'beta'},
+      ],
+      relayTasks: [
+        {
+          'taskId': 'rb1',
+          'title': '中继任务乙',
+          'workspacePath': '/repo/beta',
+          'workspaceIdentity': 'beta',
+          'displayStatus': 'idle',
+          'updatedAt': now,
+          'createdAt': now - 2000,
+        },
+      ],
+    );
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    Iterable<String> cardOrder() => tester
+        .widgetList<Text>(find.byWidgetPredicate(
+            (w) => w is Text && (w.data == 'alpha' || w.data == 'beta')))
+        .map((t) => t.data!);
+
+    // Default sort (更新时间): beta (updating now) floats above alpha.
+    expect(cardOrder(), ['beta', 'alpha']);
+
+    // 创建时间: alpha's task was created later than beta's — order flips.
+    await tester.tap(find.byTooltip('整理任务'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('创建时间'));
+    await tester.pumpAndSettle();
+    expect(cardOrder(), ['alpha', 'beta']);
+  });
+
+  testWidgets('tapping a foreign task re-points the bridge before subscribing',
+      (tester) async {
+    final (_, _, session) = await setupTwoWorkspaces(tester);
+
+    // Expand beta (header tap only expands), then open its relay task —
+    // the bridge must switch to beta and the chat must carry beta as the
+    // home workspace, or the desktop registers the session under alpha.
+    await tester.tap(find.text('beta'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('中继任务乙'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(session.openWorkspaceCalls.last['workspaceIdentity'], 'beta');
+    expect(find.byType(ChatPage), findsOneWidget);
+    expect(
+      tester.widget<ChatPage>(find.byType(ChatPage)).homeWorkspaceKey,
+      'beta',
+    );
+  });
 }

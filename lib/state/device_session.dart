@@ -196,6 +196,12 @@ abstract interface class ChatGateway implements Listenable {
   /// resync relies on the desktop pushing a snapshot frame, which is not
   /// guaranteed for every failure mode.
   Future<ChatHandle> resubscribe(String sessionId);
+
+  /// Re-points the workspace bridge to `workspaceKey` (a no-op when already
+  /// there or null). Draft chats pass the workspace they were opened from
+  /// so createSession can't fire on a drifted bridge and register the new
+  /// session under a foreign workspace.
+  Future<void> ensureHomeWorkspace(String? workspaceKey);
   Future<WorkspacePrep> prepareWorkspace();
   Future<List<SkillEntry>> skills();
 
@@ -1092,9 +1098,18 @@ class DeviceSession extends ChangeNotifier
             existing.resync(forceSnapshot: forceSnapshot),
       );
     }
+    // The chat's home workspace key is captured once at first subscribe —
+    // by then the task list has already re-pointed the bridge to the task's
+    // own workspace. Every later subscribe re-points the bridge back home
+    // first: subscribing on a drifted bridge is what registers the session
+    // under a foreign workspace on the desktop.
+    await _ensureChatWorkspace(sessionId);
     final sub = await _requireConversation.subscribe(sessionId);
     _chatSubs[sessionId] = sub;
-    _chatWorkspaceKeys[sessionId] = workspaceKeyOf(_activeWorkspace ?? const {});
+    _chatWorkspaceKeys.putIfAbsent(
+      sessionId,
+      () => workspaceKeyOf(_activeWorkspace ?? const {}),
+    );
     return ChatHandle(
       state: sub.state,
       close: () async {
@@ -1130,13 +1145,33 @@ class DeviceSession extends ChangeNotifier
   Future<void> _ensureChatWorkspace(String sessionId) async {
     final expected = _chatWorkspaceKeys[sessionId];
     if (expected == null) return;
-    final current = workspaceKeyOf(_activeWorkspace ?? const {});
-    if (current == expected) return;
-    final target = _workspaceByKey(expected);
+    if (workspaceKeyOf(_activeWorkspace ?? const {}) == expected) return;
+    await _openChatWorkspace(expected, sessionId);
+  }
+
+  /// Re-points the bridge to `key` and verifies it actually landed there:
+  /// [openWorkspace] swallows bridge failures (the task list degrades but
+  /// the link survives), and firing a session command on the wrong bridge
+  /// registers the session under a foreign workspace on the desktop.
+  Future<void> _openChatWorkspace(String key, String? taskId) async {
+    final target = _workspaceByKey(key);
     if (target == null) {
       throw StateError('会话所属工作区当前不可用，请回到任务列表重试');
     }
-    await openWorkspace(target, taskId: sessionId);
+    await openWorkspace(target, taskId: taskId);
+    if (workspaceKeyOf(_activeWorkspace ?? const {}) != key) {
+      throw StateError('会话所属工作区当前不可用，请回到任务列表重试');
+    }
+  }
+
+  /// Draft chats have no session id yet, so no home key is on file for
+  /// them — the chat page passes the workspace the draft was opened from
+  /// and this re-points the (possibly drifted) bridge before createSession.
+  @override
+  Future<void> ensureHomeWorkspace(String? workspaceKey) async {
+    if (workspaceKey == null) return;
+    if (workspaceKeyOf(_activeWorkspace ?? const {}) == workspaceKey) return;
+    await _openChatWorkspace(workspaceKey, null);
   }
 
   @override
@@ -1144,9 +1179,11 @@ class DeviceSession extends ChangeNotifier
     final old = _chatSubs[sessionId];
     if (old != null) {
       _chatSubs.remove(sessionId);
-      _chatWorkspaceKeys.remove(sessionId);
       await old.dispose();
     }
+    // Keep the home key captured at first subscribe: this is the same
+    // session again, and re-capturing from the (possibly drifted) active
+    // workspace is what poisoned the mapping before.
     return subscribe(sessionId);
   }
 
