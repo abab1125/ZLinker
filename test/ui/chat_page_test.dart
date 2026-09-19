@@ -213,11 +213,19 @@ class FakeChatGateway extends ChangeNotifier implements ChatGateway {
   Future<dynamic> compact(String sessionId) async =>
       _rec('compact', [sessionId]);
   @override
-  Future<dynamic> pauseGoal(String sessionId) async =>
-      _rec('pauseGoal', [sessionId]);
+  Future<dynamic> pauseGoal(String sessionId) async {
+    final rec = _rec('pauseGoal', [sessionId]);
+    return pauseGoalAck ?? rec;
+  }
   @override
-  Future<dynamic> resumeGoal(String sessionId) async =>
-      _rec('resumeGoal', [sessionId]);
+  Future<dynamic> resumeGoal(String sessionId) async {
+    final rec = _rec('resumeGoal', [sessionId]);
+    return resumeGoalAck ?? rec;
+  }
+
+  /// Ack overrides for the goal pause/resume commands (null = accepted).
+  Object? pauseGoalAck;
+  Object? resumeGoalAck;
 
   /// Ack returned by switchModelConfig (defaults to an accepted record).
   Object? switchModelAck;
@@ -641,6 +649,30 @@ void main() {
       gateway.calls.where((c) => c.$1 == 'switchModelConfig'),
       isNotEmpty,
     );
+  });
+
+  testWidgets('/goal pause treats a duplicate ack as success', (tester) async {
+    final gateway = FakeChatGateway()..pauseGoalAck = {'status': 'duplicate'};
+    await tester.pumpWidget(
+      wrap(ChatPage(gateway: gateway, sessionId: 's1', title: 't')),
+    );
+    gateway.feedSnapshot(
+      [
+        {'rowId': 1, 'kind': 'userInput', 'text': 'hi'},
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '/goal pause');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // duplicate = the desktop already had it paused; the _run path used to
+    // miss this status and toast a bogus failure.
+    expect(find.textContaining('暂停目标失败'), findsNothing);
+    expect(gateway.calls.where((c) => c.$1 == 'pauseGoal'), isNotEmpty);
   });
 
   testWidgets('existing session: send goes through sendText', (tester) async {

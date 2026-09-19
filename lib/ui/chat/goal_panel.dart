@@ -87,7 +87,7 @@ class _GoalPanelState extends State<GoalPanel> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(trP(context, 'chat.op.failed',
-                ['${res['reasonCode'] ?? res['status']}'])),
+                [ackReason(res)])),
           ),
         );
       }

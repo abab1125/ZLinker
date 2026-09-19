@@ -1294,6 +1294,13 @@ bool ackRejected(dynamic res) =>
     res['status'] != 'noop' &&
     res['status'] != 'duplicate';
 
+/// Human-facing failure detail from a V4 command ack: reasonCode, then
+/// message, then the raw status (reasonCode and message are each optional).
+String ackReason(dynamic res) {
+  if (res is! Map) return '$res';
+  return '${res['reasonCode'] ?? res['message'] ?? res['status']}';
+}
+
 class SessionsIndexState extends ChangeNotifier {
   String? workspaceId;
   String? logEpoch;

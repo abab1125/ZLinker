@@ -451,7 +451,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       final res = await run();
       if (ackRejected(res)) {
-        _toast('$errorPrefix: ${res['reasonCode'] ?? res['status']}');
+        _toast('$errorPrefix: ${ackReason(res)}');
         return false;
       }
       return true;
@@ -622,7 +622,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         if (ackRejected(res)) {
           if (mounted) {
-            _toast(trP(context, 'chat.send.failed', [_ackReason(res)]));
+            _toast(trP(context, 'chat.send.failed', [ackReason(res)]));
           }
           return;
         }
@@ -643,7 +643,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       if (ackRejected(res)) {
         if (mounted) {
-          _toast(trP(context, 'chat.send.failed', [_ackReason(res)]));
+          _toast(trP(context, 'chat.send.failed', [ackReason(res)]));
         }
         return;
       }
@@ -660,11 +660,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
       }
     }
-  }
-
-  String _ackReason(dynamic res) {
-    if (res is! Map) return '$res';
-    return '${res['reasonCode'] ?? res['message'] ?? res['status']}';
   }
 
   String _requireSession() {
@@ -2260,7 +2255,7 @@ class _UserBubbleState extends State<_UserBubble> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(trP(context, 'chat.action.edit.failed',
-                ['${res['reasonCode'] ?? res['status']}'])),
+                [ackReason(res)])),
           ),
         );
       }
@@ -4039,7 +4034,7 @@ class _InteractionCardState extends State<_InteractionCard> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(trP(context, 'chat.op.failed',
-                ['${res['reasonCode'] ?? res['status']}'])),
+                [ackReason(res)])),
           ),
         );
       }
@@ -4764,9 +4759,7 @@ class _ModelModeSheet extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                trP(context, 'chat.sheet.rejected', [
-                  '${res['reasonCode'] ?? res['status']}',
-                ]),
+                trP(context, 'chat.sheet.rejected', [ackReason(res)]),
               ),
             ),
           );
@@ -5409,7 +5402,7 @@ class _InputBarState extends State<_InputBar> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(trP(context, 'chat.op.failed',
-                ['${res['reasonCode'] ?? res['status']}'])),
+                [ackReason(res)])),
           ),
         );
       }

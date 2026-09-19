@@ -2123,7 +2123,7 @@ class _TaskListPageState extends State<TaskListPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(trP(context, 'tasks.opFailed',
-                ['${res['reasonCode'] ?? res['status']}'])),
+                [ackReason(res)])),
           ),
         );
       }

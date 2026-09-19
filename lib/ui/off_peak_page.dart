@@ -960,7 +960,7 @@ class _OffPeakSheetState extends State<OffPeakSheet> {
     try {
       final e = widget.editing;
       if (e != null) {
-        await widget.session.offPeak.update(
+        final result = await widget.session.offPeak.update(
           e.id,
           OffPeakUpdateInput(
             title: _title.text,
@@ -971,6 +971,14 @@ class _OffPeakSheetState extends State<OffPeakSheet> {
           ),
         );
         if (!mounted) return;
+        // Mirror submit: an inline {ok:false, error} answer must not close
+        // the sheet as if the edit had gone through.
+        if (!result.ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(trP(context, 'op.err.other',
+                  [result.error ?? 'unknown']))));
+          return;
+        }
         Navigator.pop(context);
         return;
       }

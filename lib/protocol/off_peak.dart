@@ -144,8 +144,10 @@ class OffPeakPort {
   /// `{title, prompt, permissionMode, model, thoughtLevel}` keyed by the
   /// task id; `model`/`thoughtLevel` arrive as explicit nulls when unset.
   /// Arg shapes: 0 = `[{offPeakTaskId, ...patch}]`,
-  /// 1 = `[taskId, {patch}]` — resolved once and remembered.
-  Future<void> update(String taskId, OffPeakUpdateInput patch) async {
+  /// 1 = `[taskId, {patch}]` — resolved once and remembered. Returns the
+  /// ack (run-result-shaped when the server answers inline), mirroring
+  /// [submit] so an inline `{ok:false, error}` cannot read as success.
+  Future<OffPeakRunResult> update(String taskId, OffPeakUpdateInput patch) async {
     const shapes = 2;
     Object? firstError;
     for (var shape = 0; shape < shapes; shape++) {
@@ -154,9 +156,11 @@ class OffPeakPort {
         _ => <Object?>[taskId, patch.toWire()],
       };
       try {
-        await _probe.run('update:$shape', _updateMethods,
+        final res = await _probe.run('update:$shape', _updateMethods,
             argsOf: (_) => args);
-        return;
+        final ack =
+            res is Map ? res.cast<String, dynamic>() : const <String, dynamic>{};
+        return OffPeakRunResult.from(ack);
       } on ChannelRpcError catch (e) {
         if (!MethodProbe.missingMethod(e.message)) rethrow;
         firstError ??= e;
