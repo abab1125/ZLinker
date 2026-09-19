@@ -665,11 +665,16 @@ void main() {
 
     await tester.tap(find.text('按时间线'));
     await tester.pumpAndSettle();
+    // Picking a group closes the panel right away (radio popover parity).
+    expect(find.text('按工作区'), findsNothing);
     // Timeline buckets appear with the workspace name in each row.
     expect(find.text('今天'), findsOneWidget);
     expect(find.text('alpha · 刚刚'), findsWidgets);
 
     // Sort by created time: 任务乙 (newer createdAt) now comes first.
+    // Picking a group closes the panel (radio popover) — reopen it.
+    await tester.tap(find.byTooltip('整理任务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建时间'));
     await tester.pumpAndSettle();
     final order = tester
@@ -732,7 +737,10 @@ void main() {
     // Default sort (更新时间): the still-updating 乙 comes first…
     expect(taskOrder(), ['任务乙', '任务甲']);
 
-    // …while 创建时间 flips the order.
+    // …while 创建时间 flips the order. The panel closed on the group pick —
+    // reopen it first.
+    await tester.tap(find.byTooltip('整理任务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建时间'));
     await tester.pumpAndSettle();
     expect(taskOrder(), ['任务甲', '任务乙']);
@@ -796,6 +804,64 @@ void main() {
     await tester.tap(find.text('创建时间'));
     await tester.pumpAndSettle();
     expect(cardOrder(), ['alpha', 'beta']);
+  });
+
+  testWidgets('timeline keeps the refreshing row of a double-registered task',
+      (tester) async {
+    usePhone(tester);
+    final (store, device) = await setupDevice();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Legacy duplicate registration: the same session under two workspaces —
+    // the real (alpha) row keeps refreshing, the stale (beta) one froze at
+    // its last state. The stale row used to win by insertion order and sort
+    // the live task hours behind.
+    final session = FakeDeviceSession(
+      deviceId: device.id,
+      params: device.params!,
+      entries: const [],
+      workspaces: [
+        {'workspacePath': '/repo/alpha', 'workspaceIdentity': 'alpha'},
+        {'workspacePath': '/repo/beta', 'workspaceIdentity': 'beta'},
+      ],
+      relayTasks: [
+        {
+          'taskId': 't1',
+          'title': '任务甲',
+          'workspacePath': '/repo/beta',
+          'workspaceIdentity': 'beta',
+          'displayStatus': 'completed',
+          'updatedAt': now - 7200000,
+        },
+        {
+          'taskId': 't1',
+          'title': '任务甲',
+          'workspacePath': '/repo/alpha',
+          'workspaceIdentity': 'alpha',
+          'displayStatus': 'running',
+          'updatedAt': now,
+        },
+      ],
+    );
+    await tester.pumpWidget(wrap(TaskListPage(
+      store: store,
+      hub: DeviceSessionHub(nativeListEnabled: () => false),
+      device: device,
+      sessionOverride: session,
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byTooltip('整理任务'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.text('按时间线'));
+    // finite pumps: the running pill's spinner never settles
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // The refreshing alpha row wins; the stale beta row must not shadow it.
+    expect(find.text('alpha · 刚刚'), findsOneWidget);
+    expect(find.textContaining('beta · '), findsNothing);
   });
 
   testWidgets('tapping a foreign task re-points the bridge before subscribing',

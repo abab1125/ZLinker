@@ -258,19 +258,38 @@ class _TaskListPageState extends State<TaskListPage> {
     DeviceSession session,
   ) {
     final byId = <String, (SessionEntry, Map<String, dynamic>?)>{};
+    // The desktop may carry one session under two workspaces (legacy
+    // duplicate registration): the real row keeps refreshing while the
+    // stale one freezes at its last state. Prefer the running row / the
+    // fresher updatedAt instead of whichever came last in the array —
+    // keeping the stale row is what made a live task sort hours behind.
+    (SessionEntry, Map<String, dynamic>?) better(
+      (SessionEntry, Map<String, dynamic>?) a,
+      (SessionEntry, Map<String, dynamic>?) b,
+    ) {
+      final (ea, _) = a;
+      final (eb, _) = b;
+      final runA = ea.phase == 'running' || ea.phase == 'prewarming';
+      final runB = eb.phase == 'running' || eb.phase == 'prewarming';
+      if (runA != runB) return runA ? a : b;
+      return ea.lastActivityAt >= eb.lastActivityAt ? a : b;
+    }
+
     for (final t in session.relayTasks) {
       if (t['archived'] == true) continue;
       final entry = SessionEntry.fromRelayTask(t);
-      byId[entry.sessionId] = (
-        entry,
-        _workspaceForKey(session, _relayTaskKey(t)),
-      );
+      final candidate = (entry, _workspaceForKey(session, _relayTaskKey(t)));
+      final existing = byId[entry.sessionId];
+      byId[entry.sessionId] =
+          existing == null ? candidate : better(existing, candidate);
     }
     final active = session.activeWorkspace;
     if (session.sessions?.ready == true) {
       for (final e in session.sessions!.list) {
         if (e.raw['archived'] == true) continue;
-        byId[e.sessionId] = (e, active);
+        // Keep the workspace the relay already knows this session under
+        // (its real home) instead of stamping the active one over it.
+        byId[e.sessionId] = (e, byId[e.sessionId]?.$2 ?? active);
       }
     }
     return byId.values.toList();
@@ -1140,6 +1159,9 @@ class _TaskListPageState extends State<TaskListPage> {
                     onChanged: (v) {
                       setState(() => _groupBy = v ?? _groupBy);
                       _saveOrganizePrefs();
+                      // Radio popover parity: picking one closes the panel
+                      // and the re-grouped list is right there underneath.
+                      Navigator.pop(sheetCtx);
                     },
                     title: Text(label),
                     contentPadding: const EdgeInsets.symmetric(
@@ -1172,6 +1194,7 @@ class _TaskListPageState extends State<TaskListPage> {
                     onChanged: (v) {
                       setState(() => _sortBy = v ?? _sortBy);
                       _saveOrganizePrefs();
+                      Navigator.pop(sheetCtx);
                     },
                     title: Text(label),
                     contentPadding: const EdgeInsets.symmetric(
