@@ -147,7 +147,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _sessionId != null) {
-      _refreshLatest();
+      _refreshOnResume();
+    }
+  }
+
+  /// On resume, prefer the light-weight in-place resync: the snapshot comes
+  /// back inline in the resync response, so the current rows stay rendered
+  /// and are replaced silently — no teardown, no full-area spinner. The
+  /// subscription rebuild stays the fallback for when the resync can't
+  /// deliver (wedged bridge etc.).
+  Future<void> _refreshOnResume() async {
+    if (_refreshing) return;
+    final handle = _handle;
+    if (handle == null || !handle.state.ready) {
+      await _refreshLatest();
+      return;
+    }
+    try {
+      await handle
+          .resync(forceSnapshot: true)
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      await _refreshLatest();
     }
   }
 
@@ -231,6 +252,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         await handle.close();
         return;
       }
+      // The old subscription is already disposed, but keep its last rows on
+      // screen until the fresh snapshot lands — swapping earlier would flash
+      // the full-area loading spinner between rebuild and snapshot.
+      if (!handle.state.ready) {
+        await _waitForReady(handle.state, const Duration(seconds: 30));
+        if (!mounted) {
+          await handle.close();
+          return;
+        }
+      }
       final old = _handle;
       old?.state.removeListener(_scrollToBottom);
       setState(() => _handle = handle);
@@ -252,6 +283,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       } catch (_) {}
     } finally {
       if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  /// Waits (bounded) for a fresh subscription's first frame so the caller can
+  /// keep rendering the previous rows until the snapshot lands.
+  Future<void> _waitForReady(ConversationState state, Duration timeout) async {
+    if (state.ready) return;
+    final done = Completer<void>();
+    void listener() {
+      if (state.ready && !done.isCompleted) done.complete();
+    }
+
+    state.addListener(listener);
+    try {
+      await done.future.timeout(timeout);
+    } on TimeoutException {
+      // Give up waiting — swap anyway; the page degrades to its spinner.
+    } finally {
+      state.removeListener(listener);
     }
   }
 
